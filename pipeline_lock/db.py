@@ -6,7 +6,8 @@ DB_PATH = Path(__file__).parent.parent / "pipeline_lock.db"
 def get_connection(db_path: str | Path = DB_PATH) -> sqlite3.Connection:
     """Get a connection to the SQLite database."""
     conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row # Access columns by name instead of index
+    """Access columns by name instead of index."""
+    conn.row_factory = sqlite3.Row  
     init_db(conn)
     return conn
 
