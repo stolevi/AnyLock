@@ -8,6 +8,9 @@ DEFAULT_LOCK_DURATION = timedelta(minutes=30)  # Default lock duration of 30 min
 class LockConflictError(Exception):
     """raised when trying to acquire a resource that's already locked by someone else."""
 
+class LockNotOwnedError(Exception):
+    """raised when trying to release a resource that's not owned by the current owner."""
+
 def _row_to_lock(row: sqlite3.Row) -> Lock:
     """Convert a raw database row into a Lock object."""
     return Lock(
@@ -63,4 +66,29 @@ def acquire_lock(conn: sqlite3.Connection, resource_id: str, owner: str) -> Lock
     conn.commit()
 
     return new_lock
-    
+
+def release_lock(conn: sqlite3.Connection, resource_id: str, owner: str) -> None:
+    """Release a lock on a resource. Raises LockNotOwnedError if the lock is held by someone else. No-op if the resource isn't locked."""
+
+    existing = check_status(conn, resource_id)
+
+    if existing is None:
+        return  # No lock to release
+
+    if existing.owner != owner:
+        raise LockNotOwnedError(f"{resource_id} is locked by {existing.owner}, not {owner}.")
+
+    conn.execute("DELETE FROM locks WHERE resource_id = ?", (resource_id,))
+    conn.commit()
+
+def list_active_locks(conn: sqlite3.Connection) -> list[Lock]:
+    """return a list of all currently active locks"""
+    rows = conn.execute("SELECT * FROM locks").fetchall()
+    active_locks = []
+
+    for row in rows:
+        lock = _row_to_lock(row)
+        if not lock.is_expired():
+            active_locks.append(lock)
+
+    return active_locks
