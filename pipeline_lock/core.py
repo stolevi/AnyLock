@@ -11,6 +11,9 @@ class LockConflictError(Exception):
 class LockNotOwnedError(Exception):
     """raised when trying to release a resource that's not owned by the current owner."""
 
+class ResourceNotLockedError(Exception):
+    """raised when an operation requires a lock, but the resource is not locked."""
+
 def _row_to_lock(row: sqlite3.Row) -> Lock:
     """Convert a raw database row into a Lock object."""
     return Lock(
@@ -35,23 +38,16 @@ def check_status(conn: sqlite3.Connection, resource_id: str) -> Lock | None:
 
     return lock
 
-def acquire_lock(conn: sqlite3.Connection, resource_id: str, owner: str) -> Lock:
-    """Acquire a lock on a resource. raises LockConflictError if someone else already holds it."""
-    existing = check_status(conn, resource_id)
-
-    if existing is not None and existing.owner != owner:
-        raise LockConflictError(
-            f"{resource_id} is already locked by {existing.owner} until {existing.expires_at}"
-        )
-
+def _write_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration: timedelta | None = None) -> Lock:
+    """Helper function to write a lock to the database. Used by both acquire_lock and refresh_lock to avoid code duplication."""
     now = datetime.now(timezone.utc)
+    actual_duration = duration if duration is not None else DEFAULT_LOCK_DURATION
     new_lock = Lock(
         resource_id=resource_id,
         owner=owner,
         acquired_at=now,
-        expires_at=now + DEFAULT_LOCK_DURATION,
+        expires_at=now + actual_duration,
     )
-
     conn.execute(
         """
         INSERT INTO locks (resource_id, owner, acquired_at, expires_at)
@@ -64,8 +60,25 @@ def acquire_lock(conn: sqlite3.Connection, resource_id: str, owner: str) -> Lock
         (new_lock.resource_id, new_lock.owner, new_lock.acquired_at.isoformat(), new_lock.expires_at.isoformat()),
     )
     conn.commit()
-
     return new_lock
+
+def acquire_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration: timedelta | None = None) -> Lock:
+    """Acquire a lock on a resource. raises LockConflictError if someone else already holds it."""
+    existing = check_status(conn, resource_id)
+    if existing is not None and existing.owner != owner:
+        raise LockConflictError(
+            f"{resource_id} is already locked by {existing.owner} until {existing.expires_at}"
+        )
+    return _write_lock(conn, resource_id, owner, duration)
+   
+def refresh_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration: timedelta | None = None) -> Lock:
+    """Extend the lease of an existing lock by 'owner'. Raises ResourceNotLockedError if the resource is not currently locked or LockNotOwnedError if the lock is held by someone else."""
+    existing = check_status(conn, resource_id)
+    if existing is None:
+        raise ResourceNotLockedError(f"{resource_id} is not currently locked.")
+    if existing.owner != owner:
+        raise LockNotOwnedError(f"{resource_id} is locked by {existing.owner}, not {owner}.")
+    return _write_lock(conn, resource_id, owner, duration)
 
 def release_lock(conn: sqlite3.Connection, resource_id: str, owner: str) -> None:
     """Release a lock on a resource. Raises LockNotOwnedError if the lock is held by someone else. No-op if the resource isn't locked."""
