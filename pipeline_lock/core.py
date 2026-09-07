@@ -81,6 +81,16 @@ def release_lock(conn: sqlite3.Connection, resource_id: str, owner: str) -> None
     conn.execute("DELETE FROM locks WHERE resource_id = ?", (resource_id,))
     conn.commit()
 
+def force_release_lock(conn: sqlite3.Connection, resource_id: str) -> Lock | None:
+    """Forcefully release a lock. Use with caution!"""
+    existing = check_status(conn, resource_id)
+    if existing is None:
+        return None  # No lock to release
+    conn.execute("DELETE FROM locks WHERE resource_id = ?", (resource_id,))
+    conn.commit()
+    return existing
+
+
 def list_active_locks(conn: sqlite3.Connection) -> list[Lock]:
     """return a list of all currently active locks"""
     rows = conn.execute("SELECT * FROM locks").fetchall()
