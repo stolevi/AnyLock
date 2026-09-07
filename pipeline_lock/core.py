@@ -6,13 +6,16 @@ from pipeline_lock.models import Lock
 DEFAULT_LOCK_DURATION = timedelta(minutes=30)  # Default lock duration of 30 minutes
 
 class LockConflictError(Exception):
-    """raised when trying to acquire a resource that's already locked by someone else."""
+    """raised when trying to acquire a resource that's already 
+    locked by someone else."""
 
 class LockNotOwnedError(Exception):
-    """raised when trying to release a resource that's not owned by the current owner."""
+    """raised when trying to release a resource that's not owned 
+    by the current owner."""
 
 class ResourceNotLockedError(Exception):
-    """raised when an operation requires a lock, but the resource is not locked."""
+    """raised when an operation requires a lock, but the resource 
+    is not locked."""
 
 def _row_to_lock(row: sqlite3.Row) -> Lock:
     """Convert a raw database row into a Lock object."""
@@ -24,7 +27,8 @@ def _row_to_lock(row: sqlite3.Row) -> Lock:
     )
 
 def check_status(conn: sqlite3.Connection, resource_id: str) -> Lock | None:
-    """return the current Lock for a resource, or None if it's unlocked (or the lock has expired.)"""
+    """return the current Lock for a resource, or None if it's unlocked 
+    (or the lock has expired.)"""
     row = conn.execute(
         "SELECT * FROM locks WHERE resource_id = ?", (resource_id,)
     ).fetchone()
@@ -39,7 +43,8 @@ def check_status(conn: sqlite3.Connection, resource_id: str) -> Lock | None:
     return lock
 
 def _write_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration: timedelta | None = None) -> Lock:
-    """Helper function to write a lock to the database. Used by both acquire_lock and refresh_lock to avoid code duplication."""
+    """Helper function to write a lock to the database. Used by both 
+    acquire_lock and refresh_lock to avoid code duplication."""
     now = datetime.now(timezone.utc)
     actual_duration = duration if duration is not None else DEFAULT_LOCK_DURATION
     new_lock = Lock(
@@ -63,7 +68,8 @@ def _write_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration
     return new_lock
 
 def acquire_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration: timedelta | None = None) -> Lock:
-    """Acquire a lock on a resource. raises LockConflictError if someone else already holds it."""
+    """Acquire a lock on a resource. raises LockConflictError if someone 
+    else already holds it."""
     existing = check_status(conn, resource_id)
     if existing is not None and existing.owner != owner:
         raise LockConflictError(
@@ -72,7 +78,9 @@ def acquire_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duratio
     return _write_lock(conn, resource_id, owner, duration)
    
 def refresh_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration: timedelta | None = None) -> Lock:
-    """Extend the lease of an existing lock by 'owner'. Raises ResourceNotLockedError if the resource is not currently locked or LockNotOwnedError if the lock is held by someone else."""
+    """Extend the lease of an existing lock by 'owner'. Raises 
+    ResourceNotLockedError if the resource is not currently locked or 
+    LockNotOwnedError if the lock is held by someone else."""
     existing = check_status(conn, resource_id)
     if existing is None:
         raise ResourceNotLockedError(f"{resource_id} is not currently locked.")
@@ -81,7 +89,8 @@ def refresh_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duratio
     return _write_lock(conn, resource_id, owner, duration)
 
 def release_lock(conn: sqlite3.Connection, resource_id: str, owner: str) -> None:
-    """Release a lock on a resource. Raises LockNotOwnedError if the lock is held by someone else. No-op if the resource isn't locked."""
+    """Release a lock on a resource. Raises LockNotOwnedError if 
+    the lock is held by someone else. No-op if the resource isn't locked."""
 
     existing = check_status(conn, resource_id)
 
