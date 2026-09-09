@@ -54,7 +54,22 @@ def acquire(resource_id: str, owner: str, duration: str | None) -> None:
     except LockConflictError as e:
         click.echo(str(e))
 
-
+@cli.command()
+@click.argument("resource_id")
+@click.option("--owner", required=True)
+@click.option("--duration")
+def refresh(resource_id: str, owner: str, duration: str | None) -> None:
+    """Refresh a lock on a resource as the owner of the lock."""
+    conn = get_connection()
+    if duration is not None:
+        duration = _parse_duration(duration)
+    try:
+        lock = refresh_lock(conn, resource_id, owner, duration)
+        click.echo(f"Lock on {resource_id} refreshed by {owner} until {lock.expires_at}.")
+    except LockNotOwnedError as e:
+        click.echo(str(e))
+    except ResourceNotLockedError as e:
+        click.echo(str(e))
 
 if __name__ == '__main__':
     cli()
