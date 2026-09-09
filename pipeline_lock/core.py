@@ -6,15 +6,15 @@ from pipeline_lock.models import Lock
 DEFAULT_LOCK_DURATION = timedelta(hours=8)  # Default lock duration of 8 hours
 
 class LockConflictError(Exception):
-    """raised when trying to acquire a resource that's already 
+    """Raised when trying to acquire a resource that's already 
     locked by someone else."""
 
 class LockNotOwnedError(Exception):
-    """raised when trying to release a resource that's not owned 
+    """Raised when trying to release a resource that's not owned 
     by the current owner."""
 
 class ResourceNotLockedError(Exception):
-    """raised when an operation requires a lock, but the resource 
+    """Raised when an operation requires a lock, but the resource 
     is not locked."""
 
 def _row_to_lock(row: sqlite3.Row) -> Lock:
@@ -27,7 +27,7 @@ def _row_to_lock(row: sqlite3.Row) -> Lock:
     )
 
 def check_status(conn: sqlite3.Connection, resource_id: str) -> Lock | None:
-    """return the current Lock for a resource, or None if it's unlocked 
+    """Return the current Lock for a resource, or None if it's unlocked 
     (or the lock has expired.)"""
     row = conn.execute(
         "SELECT * FROM locks WHERE resource_id = ?", (resource_id,)
@@ -114,7 +114,7 @@ def force_release_lock(conn: sqlite3.Connection, resource_id: str) -> Lock | Non
 
 
 def list_active_locks(conn: sqlite3.Connection) -> list[Lock]:
-    """return a list of all currently active locks"""
+    """Return a list of all currently active locks"""
     rows = conn.execute("SELECT * FROM locks").fetchall()
     active_locks = []
 
