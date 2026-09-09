@@ -13,3 +13,10 @@ def add_supervisor(conn: sqlite3.Connection, supervisor_name: str) -> None:
         "INSERT OR IGNORE INTO supervisors (supervisor_name) VALUES (?)", (supervisor_name,)
     )
     conn.commit()
+
+def remove_supervisor(conn: sqlite3.Connection, supervisor_name: str) -> None:
+    """remove a supervisor from the supervisors table"""
+    conn.execute(
+        "DELETE FROM supervisors WHERE supervisor_name = ?", (supervisor_name,)
+    )
+    conn.commit()
