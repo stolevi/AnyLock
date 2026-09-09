@@ -22,6 +22,8 @@ def status(resource_id: str) -> None:
 def _parse_duration(duration_str: str) -> timedelta:
     """parse a duration string like '30m' (minutes), '1h' (hours), '2d' (days) 
     into a timedelta object. Raises click.BadParameter if the format is invalid."""
+    if duration_str == "":
+        raise click.BadParameter("Duration cannot be empty.")
     unit = duration_str[-1]
     try:
         value = int(duration_str[:-1])
@@ -39,8 +41,20 @@ def _parse_duration(duration_str: str) -> timedelta:
 
 @cli.command()
 @click.argument("resource_id")
-@click.option("--owner")
+@click.option("--owner", required=True)
 @click.option("--duration")
+def acquire(resource_id: str, owner: str, duration: str | None) -> None:
+    """Acquire a lock on a resource."""
+    conn = get_connection()
+    if duration is not None:
+        duration = _parse_duration(duration)
+    try:
+        lock = acquire_lock(conn, resource_id, owner, duration)
+        click.echo(f"Lock acquired on {resource_id} by {owner} until {lock.expires_at}.")
+    except LockConflictError as e:
+        click.echo(str(e))
+
+
 
 if __name__ == '__main__':
     cli()
