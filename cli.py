@@ -121,6 +121,18 @@ def force_release(resource_id: str, forced_by: str) -> None:
         click.echo(f"No lock to force release on {resource_id}.")
     else:
         click.echo(f"Lock on {resource_id} forcefully released by {forced_by}. It was previously held by {released_lock.owner} until {released_lock.expires_at}.")
-    
+
+@cli.command(name="show-locks")
+def show_locks() -> None:
+    """Show all currently active locks."""
+    conn = get_connection()
+    active_locks = list_active_locks(conn)
+    if not active_locks:
+        click.echo("No active locks.")
+        return
+    for lock in active_locks:
+        click.echo(f"{lock.resource_id} is locked by {lock.owner} until {lock.expires_at}.")
+        
+
 if __name__ == '__main__':
     cli()
