@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from pipeline_lock.models import Lock
 
-DEFAULT_LOCK_DURATION = timedelta(minutes=30)  # Default lock duration of 30 minutes
+DEFAULT_LOCK_DURATION = timedelta(hours=8)  # Default lock duration of 8 hours
 
 class LockConflictError(Exception):
     """raised when trying to acquire a resource that's already 
