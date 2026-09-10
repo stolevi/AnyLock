@@ -1,6 +1,5 @@
 import sqlite3
 from datetime import datetime, timedelta, timezone
-
 from pipeline_lock.models import Lock
 
 DEFAULT_LOCK_DURATION = timedelta(hours=8)  # Default lock duration of 8 hours
@@ -32,14 +31,11 @@ def check_status(conn: sqlite3.Connection, resource_id: str) -> Lock | None:
     row = conn.execute(
         "SELECT * FROM locks WHERE resource_id = ?", (resource_id,)
     ).fetchone()
-
     if row is None:
         return None
-
     lock = _row_to_lock(row)
     if lock.is_expired():
         return None  # Treat expired locks as unlocked
-
     return lock
 
 def _write_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration: timedelta | None = None) -> Lock:
@@ -91,15 +87,11 @@ def refresh_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duratio
 def release_lock(conn: sqlite3.Connection, resource_id: str, owner: str) -> None:
     """Release a lock on a resource. Raises LockNotOwnedError if 
     the lock is held by someone else. No-op if the resource isn't locked."""
-
     existing = check_status(conn, resource_id)
-
     if existing is None:
         return  # No lock to release
-
     if existing.owner != owner:
         raise LockNotOwnedError(f"{resource_id} is locked by {existing.owner}, not {owner}.")
-
     conn.execute("DELETE FROM locks WHERE resource_id = ?", (resource_id,))
     conn.commit()
 
@@ -112,15 +104,12 @@ def force_release_lock(conn: sqlite3.Connection, resource_id: str) -> Lock | Non
     conn.commit()
     return existing
 
-
 def list_active_locks(conn: sqlite3.Connection) -> list[Lock]:
     """Return a list of all currently active locks"""
     rows = conn.execute("SELECT * FROM locks").fetchall()
     active_locks = []
-
     for row in rows:
         lock = _row_to_lock(row)
         if not lock.is_expired():
             active_locks.append(lock)
-
     return active_locks
