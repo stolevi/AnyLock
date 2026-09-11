@@ -106,7 +106,12 @@ def force_release_lock(conn: sqlite3.Connection, resource_id: str) -> Lock | Non
 
 def list_active_locks(conn: sqlite3.Connection) -> list[Lock]:
     """Return a list of all currently active locks"""
-    rows = conn.execute("SELECT * FROM locks").fetchall()
+    rows = conn.execute(
+        """
+        SELECT * FROM locks ORDER BY expires_at ASC,
+        resource_id ASC
+        """
+        ).fetchall()
     active_locks = []
     for row in rows:
         lock = _row_to_lock(row)
