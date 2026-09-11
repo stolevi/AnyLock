@@ -1,14 +1,6 @@
 import pytest
-from pipeline_lock.db import get_connection
 from pipeline_lock.core import check_status, acquire_lock, refresh_lock, release_lock, force_release_lock, list_active_locks, LockConflictError, LockNotOwnedError, ResourceNotLockedError
 from datetime import datetime, timezone, timedelta
-
-@pytest.fixture
-def conn():
-    """Provide a fresh in-memory database connection for each test."""
-    conn = get_connection(":memory:")
-    yield conn
-    conn.close()
 
 def test_check_status_lock_not_existing(conn):
     assert check_status(conn, "resource_id") is None
