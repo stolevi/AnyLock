@@ -1,6 +1,6 @@
 import sqlite3
 from datetime import datetime, timedelta, timezone
-from pipeline_lock.models import Lock
+from pipeline_lock.models import Lock, LockEvent
 
 DEFAULT_LOCK_DURATION = timedelta(hours=8)  # Default lock duration of 8 hours
 
@@ -25,9 +25,19 @@ def _row_to_lock(row: sqlite3.Row) -> Lock:
         expires_at=datetime.fromisoformat(row["expires_at"]),
     )
 
+def _row_to_history_event(row: sqlite3.Row) -> LockEvent:
+    """Convert a raw database row into a LockEvent object."""
+    return LockEvent(
+        event_id=row["event_id"],
+        resource_id=row["resource_id"],
+        owner=row["owner"],
+        event_type=row["event_type"],
+        timestamp=datetime.fromisoformat(row["timestamp"]),
+    )
+
 def check_status(conn: sqlite3.Connection, resource_id: str) -> Lock | None:
     """Return the current Lock for a resource, or None if it's unlocked 
-    (or the lock has expired.)"""
+    (or the lock has expired)."""
     row = conn.execute(
         "SELECT * FROM locks WHERE resource_id = ?", (resource_id,)
     ).fetchone()
@@ -63,6 +73,17 @@ def _write_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration
     conn.commit()
     return new_lock
 
+def _write_to_history(conn: sqlite3.Connection, resource_id: str, owner:str, event_type: str, timestamp: datetime) -> None:
+    """write lock events to lock_history."""
+    conn.execute(
+        """
+        INSERT INTO lock_history (resource_id, owner, event_type, timestamp)
+        VALUES (?, ?, ?, ?)
+        """,
+        (resource_id, owner, event_type, timestamp.isoformat())      
+    )
+    conn.commit()
+
 def acquire_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration: timedelta | None = None) -> Lock:
     """Acquire a lock on a resource. raises LockConflictError if someone 
     else already holds it."""
@@ -71,7 +92,9 @@ def acquire_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duratio
         raise LockConflictError(
             f"{resource_id} is already locked by {existing.owner} until {existing.expires_at}"
         )
-    return _write_lock(conn, resource_id, owner, duration)
+    lock = _write_lock(conn, resource_id, owner, duration)
+    _write_to_history(conn, resource_id, owner, "acquire", lock.acquired_at)
+    return lock
    
 def refresh_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration: timedelta | None = None) -> Lock:
     """Extend the lease of an existing lock by 'owner'. Raises 
@@ -82,7 +105,9 @@ def refresh_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duratio
         raise ResourceNotLockedError(f"{resource_id} is not currently locked.")
     if existing.owner != owner:
         raise LockNotOwnedError(f"{resource_id} is locked by {existing.owner}, not {owner}.")
-    return _write_lock(conn, resource_id, owner, duration)
+    lock = _write_lock(conn, resource_id, owner, duration)
+    _write_to_history(conn, resource_id, owner, "refresh", lock.acquired_at)
+    return lock
 
 def release_lock(conn: sqlite3.Connection, resource_id: str, owner: str) -> None:
     """Release a lock on a resource. Raises LockNotOwnedError if 
@@ -93,6 +118,8 @@ def release_lock(conn: sqlite3.Connection, resource_id: str, owner: str) -> None
     if existing.owner != owner:
         raise LockNotOwnedError(f"{resource_id} is locked by {existing.owner}, not {owner}.")
     conn.execute("DELETE FROM locks WHERE resource_id = ?", (resource_id,))
+    timestamp = datetime.now(timezone.utc)
+    _write_to_history(conn, resource_id, owner, "release", timestamp)
     conn.commit()
 
 def force_release_lock(conn: sqlite3.Connection, resource_id: str) -> Lock | None:
@@ -101,11 +128,13 @@ def force_release_lock(conn: sqlite3.Connection, resource_id: str) -> Lock | Non
     if existing is None:
         return None  # No lock to release
     conn.execute("DELETE FROM locks WHERE resource_id = ?", (resource_id,))
+    timestamp = datetime.now(timezone.utc)
+    _write_to_history(conn, resource_id, existing.owner, "force_release", timestamp)
     conn.commit()
     return existing
 
 def list_active_locks(conn: sqlite3.Connection) -> list[Lock]:
-    """Return a list of all currently active locks"""
+    """Return a list of all currently active locks."""
     rows = conn.execute(
         """
         SELECT * FROM locks ORDER BY expires_at ASC,
@@ -118,3 +147,19 @@ def list_active_locks(conn: sqlite3.Connection) -> list[Lock]:
         if not lock.is_expired():
             active_locks.append(lock)
     return active_locks
+
+def get_resource_history(conn: sqlite3.Connection, resource_id: str) -> list[LockEvent]:
+    """Return a list of events for this resource."""
+    rows = conn.execute(
+        """
+        SELECT * FROM lock_history WHERE resource_id = ?
+        ORDER BY timestamp DESC
+        """, (resource_id,)
+        ).fetchall()
+    events = []
+    for row in rows:
+        event = _row_to_history_event(row)
+        events.append(event)
+    return events
+
+    

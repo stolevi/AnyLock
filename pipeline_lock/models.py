@@ -12,3 +12,12 @@ class Lock:
         current_time = now if now is not None else datetime.now(timezone.utc)
         return current_time >= self.expires_at
 
+@dataclass
+class LockEvent:
+    event_id: int
+    resource_id: str
+    owner: str
+    event_type: str
+    timestamp: datetime
+
+    

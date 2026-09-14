@@ -23,7 +23,17 @@ def init_db(conn: sqlite3.Connection) -> None:
         )
         """
     )
-
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS lock_history (
+            event_id INTEGER PRIMARY KEY,
+            resource_id TEXT NOT NULL,
+            owner TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            timestamp TEXT NOT NULL    
+        )
+        """
+        )
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS supervisors (
