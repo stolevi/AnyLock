@@ -1,8 +1,11 @@
 import click
 from pipeline_lock.db import get_connection
 from pipeline_lock.core import check_status, acquire_lock, refresh_lock, release_lock, force_release_lock, list_active_locks, LockConflictError, LockNotOwnedError, ResourceNotLockedError
-from datetime import timedelta, datetime, timezone
+from datetime import timedelta
 from pipeline_lock.permissions import is_supervisor, add_supervisor as add_supervisor_to_db, remove_supervisor as remove_supervisor_from_db, NotAuthorizedError, require_supervisor
+from pipeline_lock.adapters.base import PipelineAdapter
+from pipeline_lock.adapters.mock import MockAdapter
+
 @click.group()
 def cli():
     """A command-line interface for managing tasks."""
@@ -20,6 +23,15 @@ def status(resource_id: str) -> None:
             f"{resource_id} is locked by {lock.owner} until {lock.expires_at}."
         )
 
+def _resource_exists_or_error(adapter: PipelineAdapter, resource_id: str) -> bool:
+    """Check a resource_id for existence in the directory 
+    you're currently using. Returns True if exists, False otherwise"""
+    if not adapter.resource_exists(resource_id):
+        click.echo(f"{resource_id} not found in the directory")
+        return False
+    return True
+    
+
 def _parse_duration(duration_str: str) -> timedelta:
     """Parse a duration string like '30m' (minutes), '1h' (hours), '2d' (days) 
     into a timedelta object. Raises click.BadParameter if the format is invalid."""
@@ -30,7 +42,6 @@ def _parse_duration(duration_str: str) -> timedelta:
         value = int(duration_str[:-1])
     except ValueError:
         raise click.BadParameter("Duration must be a number followed by 'm' (minutes), 'h' (hours), or 'd' (days).")
-
     if unit == "m":
         return timedelta(minutes=value)
     elif unit == "h":
@@ -46,6 +57,9 @@ def _parse_duration(duration_str: str) -> timedelta:
 @click.option("--duration")
 def acquire(resource_id: str, owner: str, duration: str | None) -> None:
     """Acquire a lock on a resource."""
+    adapter = MockAdapter({"SQ01_SH070", "SQ04_SH050", "SQ06_SH030"})
+    if not _resource_exists_or_error(adapter, resource_id):
+        return
     conn = get_connection()
     if duration is not None:
         duration = _parse_duration(duration)
@@ -61,6 +75,9 @@ def acquire(resource_id: str, owner: str, duration: str | None) -> None:
 @click.option("--duration")
 def refresh(resource_id: str, owner: str, duration: str | None) -> None:
     """Refresh a lock on a resource as the owner of the lock."""
+    adapter = MockAdapter({"SQ01_SH070", "SQ04_SH050", "SQ06_SH030"})
+    if not _resource_exists_or_error(adapter, resource_id):
+        return
     conn = get_connection()
     if duration is not None:
         duration = _parse_duration(duration)
