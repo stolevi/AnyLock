@@ -1,5 +1,5 @@
 import pytest
-from pipeline_lock.core import check_status, acquire_lock, refresh_lock, release_lock, force_release_lock, list_active_locks, LockConflictError, LockNotOwnedError, ResourceNotLockedError
+from pipeline_lock.core import check_status, acquire_lock, refresh_lock, release_lock, force_release_lock, list_active_locks, get_resource_history, LockConflictError, LockNotOwnedError, ResourceNotLockedError
 from datetime import datetime, timezone, timedelta
 
 def test_check_status_lock_not_existing(conn):
@@ -70,6 +70,11 @@ def test_force_release_lock_noop(conn):
     assert check_status(conn, "resource_id") is None
     assert released_lock is None
 
+def test_force_release_lock_records_history_event(conn):
+    acquire_lock(conn, "SQ01_SH010", "Levi", duration=timedelta(hours=1))
+    force_release_lock(conn, "SQ01_SH010")
+    
+
 def test_list_active_locks_empty(conn):
     active_locks = list_active_locks(conn)
     assert active_locks == []
@@ -95,5 +100,27 @@ def test_list_active_locks_filters_expired(conn):
     assert lock_5 in active_locks
     assert lock_1 not in active_locks
     assert lock_4 not in active_locks
-    
 
+def test_get_resource_history_empty(conn):
+    resource_history = get_resource_history(conn, "SQ01_SH010")
+    assert resource_history == []
+
+def test_get_resource_history_returns_events_in_order(conn):
+    acquire_lock(conn, "SQ01_SH010", "Levi", duration=timedelta(hours=8))
+    refresh_lock(conn, "SQ01_SH010", "Levi", duration=timedelta(days=5))
+    release_lock(conn, "SQ01_SH010", "Levi")
+    resource_history = get_resource_history(conn, "SQ01_SH010")
+    event_types = []
+    for event in resource_history:
+        event_types.append(event.event_type)
+    assert event_types == ["release", "refresh", "acquire"]
+    
+def test_get_resource_history_multiple_resources(conn):
+    acquire_lock(conn, "SQ01_SH010", "Levi", duration=timedelta(hours=1))
+    acquire_lock(conn, "SQ02_SH020", "levi", duration=timedelta(hours=2))
+    resource_history_1 = get_resource_history(conn, "SQ01_SH010") 
+    resource_history_2 = get_resource_history(conn, "SQ02_SH020")
+    assert len(resource_history_1) == 1
+    assert resource_history_1[0].resource_id == "SQ01_SH010"
+    assert len(resource_history_2) == 1
+    assert resource_history_2[0].resource_id == "SQ02_SH020"

@@ -35,19 +35,6 @@ def _row_to_history_event(row: sqlite3.Row) -> LockEvent:
         timestamp=datetime.fromisoformat(row["timestamp"]),
     )
 
-def check_status(conn: sqlite3.Connection, resource_id: str) -> Lock | None:
-    """Return the current Lock for a resource, or None if it's unlocked 
-    (or the lock has expired)."""
-    row = conn.execute(
-        "SELECT * FROM locks WHERE resource_id = ?", (resource_id,)
-    ).fetchone()
-    if row is None:
-        return None
-    lock = _row_to_lock(row)
-    if lock.is_expired():
-        return None  # Treat expired locks as unlocked
-    return lock
-
 def _write_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration: timedelta | None = None) -> Lock:
     """Helper function to write a lock to the database. Used by both 
     acquire_lock and refresh_lock to avoid code duplication."""
@@ -83,6 +70,19 @@ def _write_to_history(conn: sqlite3.Connection, resource_id: str, owner:str, eve
         (resource_id, owner, event_type, timestamp.isoformat())      
     )
     conn.commit()
+
+def check_status(conn: sqlite3.Connection, resource_id: str) -> Lock | None:
+    """Return the current Lock for a resource, or None if it's unlocked 
+    (or the lock has expired)."""
+    row = conn.execute(
+        "SELECT * FROM locks WHERE resource_id = ?", (resource_id,)
+    ).fetchone()
+    if row is None:
+        return None
+    lock = _row_to_lock(row)
+    if lock.is_expired():
+        return None  # Treat expired locks as unlocked
+    return lock
 
 def acquire_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration: timedelta | None = None) -> Lock:
     """Acquire a lock on a resource. raises LockConflictError if someone 
@@ -149,7 +149,7 @@ def list_active_locks(conn: sqlite3.Connection) -> list[Lock]:
     return active_locks
 
 def get_resource_history(conn: sqlite3.Connection, resource_id: str) -> list[LockEvent]:
-    """Return a list of events for this resource."""
+    """Return a list of events for a resource."""
     rows = conn.execute(
         """
         SELECT * FROM lock_history WHERE resource_id = ?
@@ -161,5 +161,3 @@ def get_resource_history(conn: sqlite3.Connection, resource_id: str) -> list[Loc
         event = _row_to_history_event(row)
         events.append(event)
     return events
-
-    
