@@ -17,7 +17,7 @@ def cli():
     """A command-line interface for managing tasks."""
     ctx = click.get_current_context()
     if ctx.invoked_subcommand is None:
-        click.secho("Welcome to AnyLock")
+        click.secho("[==] AnyLock", fg="blue")
 
 @cli.command()
 @click.argument("resource_id")
