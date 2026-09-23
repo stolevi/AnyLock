@@ -73,8 +73,14 @@ def test_force_release_lock_noop(conn):
 def test_force_release_lock_records_history_event(conn):
     acquire_lock(conn, "SQ01_SH010", "Levi", duration=timedelta(hours=1))
     force_release_lock(conn, "SQ01_SH010")
+    resource_history = get_resource_history(conn, "SQ01_SH010")
+    assert len(resource_history) == 2
+    type_of_event = []
+    for event in resource_history:
+        type_of_event.append(event.event_type)
+    assert type_of_event[0] == "force_release"
+    assert resource_history[0].owner == "Levi"
     
-
 def test_list_active_locks_empty(conn):
     active_locks = list_active_locks(conn)
     assert active_locks == []
