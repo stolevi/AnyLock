@@ -1,5 +1,42 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
+
+class StorageType(Enum):
+    FILE_SYSTEM = "file_system"
+    DROPBOX = "dropbox"
+    GOOGLE_DRIVE = "google_drive"
+
+@dataclass
+class StorageConfig:
+    pass
+
+@dataclass
+class FileSystemConfig(StorageConfig):
+    root_path: str
+
+@dataclass
+class DropboxConfig(StorageConfig):
+    access_token: str
+    folder_path: str
+
+@dataclass
+class GoogleDriveConfig(StorageConfig):
+    credentials_json: str
+    folder_id: str
+
+@dataclass
+class Project:
+    project_id: int
+    project_name: str
+    storage_type: StorageType
+    config: StorageConfig
+    resources: list[str]
+    personnel: list[str]
+    supervisors: list[str]
+    created_at: datetime
+    updated_at: datetime
+    enforcement_enabled: bool
 
 @dataclass
 class Lock:
