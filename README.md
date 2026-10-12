@@ -1,6 +1,6 @@
 # AnyLock
 
-*A lightweight, tool-agnostic pipeline lock service for shared production files.*
+*A lightweight, tool-agnostic advisory file-locking service for creative production pipelines — currently a command-line tool, with a web GUI planned (see Roadmap).*
 
 AnyLock lets teams working from a shared pool of production files claim
 exclusive ownership of a resource before editing it, so two people never
