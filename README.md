@@ -175,3 +175,35 @@ Animation: `[==]` → `[=|=]` → `[ / ]` → `[ ]`
 python cli.py force-release SQ01_SH070 --forced-by Levi
 ```
 
+## Architecture
+
+AnyLock stores its data in a single SQLite database with two key tables that serve different purposes. The `locks` table holds only *current* state — one row per resource, overwritten in place every time a lock changes hands. The `lock_history` table is append-only: every acquire, refresh, release, and force-release gets its own permanent row, so nothing is ever overwritten or deleted. This event-log design means the full history of who did what to a resource, and when, is always reconstructable — useful for accountability on a shared production, and a deliberate choice over trying to derive history from `locks` alone.
+
+### Locking model
+
+AnyLock is an advisory lock, not an enforced one. A lock is a shared record that participants are expected to check and respect — there's no physical barrier stopping someone from opening a file directly, bypassing AnyLock entirely. This mirrors how locking actually works in real production pipelines today (Perforce's "exclusive checkout" for binary files is the same idea), and it's a deliberate tradeoff: real enforcement would require either OS-level file permission changes (complex, risky, and inconsistent across the Windows and macOS machines a real team would use) or deep integration with the specific software editing the file. The latter is exactly what the planned TVPaint plugin aims to do — see Roadmap.
+
+### Adapter pattern
+
+Resource validation goes through a `PipelineAdapter` interface rather than being hardcoded to any one tool. `MockAdapter`, used throughout development and in the Usage examples above, checks resource IDs against a fixed in-memory set. A real adapter — scanning an actual production directory structure, or eventually querying TVPaint directly — can be swapped in without changing any of AnyLock's core logic, since `core.py` and `cli.py` only ever depend on the adapter interface, never a specific implementation.
+
+### Module breakdown
+
+* `models.py` — the `Lock` and `LockEvent` dataclasses.
+* `db.py` — database connection and schema (`locks`, `lock_history`, `supervisors`).
+* `core.py` — the actual locking logic: acquiring, refreshing, releasing, and force-releasing, plus the custom exceptions (`LockConflictError`, `LockNotOwnedError`, `ResourceNotLockedError`) that signal each failure case. Pure logic, with no knowledge of the terminal, colors, or animations.
+* `permissions.py` — supervisor registration and authorization checks (`is_supervisor`, `require_supervisor`), raising `NotAuthorizedError` when appropriate.
+* `cli.py` — the command-line interface itself: argument parsing, colored output, and animations, built on top of `core.py` and `permissions.py`.
+* `adapters/` — the `PipelineAdapter` interface and its implementations.
+
+### Testing
+
+The project is covered by a pytest suite (`tests/`) exercising the core locking logic, the adapter interface, and the permissions system — currently 29 tests, run with `pytest -v` as shown in the Installation section.
+
+## Roadmap
+
+* **TVPaint plugin** — the big one, and what we're about to dig into. If TVPaint's scripting environment lets a plugin query and react to lock state in real time, this closes the gap between "advisory" and genuinely enforced locking for the one tool AnyLock was built around.
+* **Real filesystem adapter** — replace `MockAdapter` with one that validates resource IDs against an actual production directory structure, so AnyLock can be pointed at a real project instead of a fixed test set.
+* **Stronger authorization** — the current supervisor system is a simple allowlist check (`is_supervisor`); no passwords, sessions, or per-user identity beyond whatever string is passed in. Worth revisiting once there's a real multi-user deployment to support.
+* **Stale lock detection / expiration** — right now a lock lives until someone releases or force-releases it. An optional TTL or "idle too long" flag would help catch abandoned locks on a busy production.
+* **Web GUI** — `core.py` was deliberately kept free of any CLI-specific concerns so a web frontend could call into the same locking logic later without touching it.
