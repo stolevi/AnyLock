@@ -3,3 +3,18 @@ __pycache__/
 *.pyc
 *.db
 .pytest_cache/
+
+# macOS
+.DS_Store
+
+# env/secrets (if you ever add a .env for config)
+.env
+
+# build artifacts (if the project ever gets packaged)
+*.egg-info/
+build/
+dist/
+
+# editor configs (optional, only if you don't want to share your IDE settings)
+.idea/
+.vscode/
