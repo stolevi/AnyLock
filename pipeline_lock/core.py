@@ -46,7 +46,7 @@ def _write_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration
         acquired_at=now,
         expires_at=now + actual_duration,
     )
-    cursor =conn.execute(
+    cursor = conn.execute(
         """
         INSERT INTO locks (resource_id, owner, acquired_at, expires_at)
         VALUES (?, ?, ?, ?)
@@ -127,8 +127,10 @@ def release_lock(conn: sqlite3.Connection, resource_id: str, owner: str) -> None
         return  # No lock to release
     if existing.owner != owner:
         raise LockNotOwnedError(f"{resource_id} is locked by {existing.owner}, not {owner}.")
-    conn.execute("DELETE FROM locks WHERE resource_id = ?", (resource_id,))
+    cursor = conn.execute("DELETE FROM locks WHERE resource_id = ? AND owner = ?", (resource_id, owner))
     timestamp = datetime.now(timezone.utc)
+    if cursor.rowcount == 0:
+        raise LockNotOwnedError(f"{resource_id} is no longer owned by {owner}.")
     _write_to_history(conn, resource_id, owner, "release", timestamp)
     conn.commit()
 
