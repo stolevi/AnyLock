@@ -35,7 +35,7 @@ def _row_to_history_event(row: sqlite3.Row) -> LockEvent:
         timestamp=datetime.fromisoformat(row["timestamp"]),
     )
 
-def _write_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration: timedelta | None = None) -> Lock:
+def _write_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration: timedelta | None = None) -> Lock | None:
     """Helper function to write a lock to the database. Used by both 
     acquire_lock and refresh_lock to avoid code duplication."""
     now = datetime.now(timezone.utc)
@@ -46,7 +46,7 @@ def _write_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration
         acquired_at=now,
         expires_at=now + actual_duration,
     )
-    conn.execute(
+    cursor =conn.execute(
         """
         INSERT INTO locks (resource_id, owner, acquired_at, expires_at)
         VALUES (?, ?, ?, ?)
@@ -54,10 +54,13 @@ def _write_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration
             owner = excluded.owner,
             acquired_at = excluded.acquired_at,
             expires_at = excluded.expires_at
+        WHERE locks.owner = excluded.owner OR locks.expires_at <= excluded.acquired_at
         """,
         (new_lock.resource_id, new_lock.owner, new_lock.acquired_at.isoformat(), new_lock.expires_at.isoformat()),
     )
     conn.commit()
+    if cursor.rowcount == 0:
+        return None  # Lock was not acquired because it was held by someone else        
     return new_lock
 
 def _write_to_history(conn: sqlite3.Connection, resource_id: str, owner:str, event_type: str, timestamp: datetime) -> None:
@@ -87,12 +90,14 @@ def check_status(conn: sqlite3.Connection, resource_id: str) -> Lock | None:
 def acquire_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration: timedelta | None = None) -> Lock:
     """Acquire a lock on a resource. raises LockConflictError if someone 
     else already holds it."""
-    existing = check_status(conn, resource_id)
-    if existing is not None and existing.owner != owner:
-        raise LockConflictError(
-            f"{resource_id} is already locked by {existing.owner} until {existing.expires_at}"
-        )
     lock = _write_lock(conn, resource_id, owner, duration)
+    if lock is None:
+        existing = check_status(conn, resource_id)
+        if existing is not None:
+            raise LockConflictError(f"{resource_id} is already locked by {existing.owner}.")
+        lock = _write_lock(conn, resource_id, owner, duration)
+        if lock is None:
+            raise LockConflictError(f"{resource_id} was briefly contested, please try again.")
     _write_to_history(conn, resource_id, owner, "acquire", lock.acquired_at)
     return lock
    
@@ -106,6 +111,11 @@ def refresh_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duratio
     if existing.owner != owner:
         raise LockNotOwnedError(f"{resource_id} is locked by {existing.owner}, not {owner}.")
     lock = _write_lock(conn, resource_id, owner, duration)
+    if lock is None:
+        current = check_status(conn, resource_id)
+        if current is not None:
+            raise LockNotOwnedError(f"{resource_id} is now locked by {current.owner}, not {owner}.")
+        raise LockNotOwnedError(f"{resource_id} is no longer owned by {owner}.")
     _write_to_history(conn, resource_id, owner, "refresh", lock.acquired_at)
     return lock
 
