@@ -135,12 +135,13 @@ def release_lock(conn: sqlite3.Connection, resource_id: str, owner: str) -> None
     conn.commit()
 
 def force_release_lock(conn: sqlite3.Connection, resource_id: str) -> Lock | None:
-    """Forcefully release a lock. Use with caution!"""
-    existing = check_status(conn, resource_id)
-    if existing is None:
-        return None  # No lock to release
-    conn.execute("DELETE FROM locks WHERE resource_id = ?", (resource_id,))
-    timestamp = datetime.now(timezone.utc)
+    """Forcefully release a lock. Use with caution!"""    
+    cursor = conn.execute("DELETE FROM locks WHERE resource_id = ? RETURNING *", (resource_id,))
+    old_lock = cursor.fetchone()  # Fetch the deleted row to ensure the operation succeeded
+    if old_lock is None:
+        return None  # No lock was present to release
+    existing = _row_to_lock(old_lock)  
+    timestamp = datetime.now(timezone.utc)    
     _write_to_history(conn, resource_id, existing.owner, "force_release", timestamp)
     conn.commit()
     return existing
