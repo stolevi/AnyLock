@@ -58,7 +58,6 @@ def _write_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration
         """,
         (new_lock.resource_id, new_lock.owner, new_lock.acquired_at.isoformat(), new_lock.expires_at.isoformat()),
     )
-    conn.commit()
     if cursor.rowcount == 0:
         return None  # Lock was not acquired because it was held by someone else        
     return new_lock
@@ -72,7 +71,6 @@ def _write_to_history(conn: sqlite3.Connection, resource_id: str, owner:str, eve
         """,
         (resource_id, owner, event_type, timestamp.isoformat())      
     )
-    conn.commit()
 
 def check_status(conn: sqlite3.Connection, resource_id: str) -> Lock | None:
     """Return the current Lock for a resource, or None if it's unlocked 
@@ -90,61 +88,64 @@ def check_status(conn: sqlite3.Connection, resource_id: str) -> Lock | None:
 def acquire_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration: timedelta | None = None) -> Lock:
     """Acquire a lock on a resource. raises LockConflictError if someone 
     else already holds it."""
-    lock = _write_lock(conn, resource_id, owner, duration)
-    if lock is None:
-        existing = check_status(conn, resource_id)
-        if existing is not None:
-            raise LockConflictError(f"{resource_id} is already locked by {existing.owner}.")
+    with conn:
         lock = _write_lock(conn, resource_id, owner, duration)
         if lock is None:
-            raise LockConflictError(f"{resource_id} was briefly contested, please try again.")
-    _write_to_history(conn, resource_id, owner, "acquire", lock.acquired_at)
-    return lock
+            existing = check_status(conn, resource_id)
+            if existing is not None:
+                raise LockConflictError(f"{resource_id} is already locked by {existing.owner}.")
+            lock = _write_lock(conn, resource_id, owner, duration)
+            if lock is None:
+                raise LockConflictError(f"{resource_id} was briefly contested, please try again.")
+        _write_to_history(conn, resource_id, owner, "acquire", lock.acquired_at)
+        return lock
+
    
 def refresh_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration: timedelta | None = None) -> Lock:
     """Extend the lease of an existing lock by 'owner'. Raises 
     ResourceNotLockedError if the resource is not currently locked or 
     LockNotOwnedError if the lock is held by someone else."""
-    existing = check_status(conn, resource_id)
-    if existing is None:
-        raise ResourceNotLockedError(f"{resource_id} is not currently locked.")
-    if existing.owner != owner:
-        raise LockNotOwnedError(f"{resource_id} is locked by {existing.owner}, not {owner}.")
-    lock = _write_lock(conn, resource_id, owner, duration)
-    if lock is None:
-        current = check_status(conn, resource_id)
-        if current is not None:
-            raise LockNotOwnedError(f"{resource_id} is now locked by {current.owner}, not {owner}.")
-        raise LockNotOwnedError(f"{resource_id} is no longer owned by {owner}.")
-    _write_to_history(conn, resource_id, owner, "refresh", lock.acquired_at)
-    return lock
+    with conn:
+        existing = check_status(conn, resource_id)
+        if existing is None:
+            raise ResourceNotLockedError(f"{resource_id} is not currently locked.")
+        if existing.owner != owner:
+            raise LockNotOwnedError(f"{resource_id} is locked by {existing.owner}, not {owner}.")
+        lock = _write_lock(conn, resource_id, owner, duration)
+        if lock is None:
+            current = check_status(conn, resource_id)
+            if current is not None:
+                raise LockNotOwnedError(f"{resource_id} is now locked by {current.owner}, not {owner}.")
+            raise LockNotOwnedError(f"{resource_id} is no longer owned by {owner}.")
+        _write_to_history(conn, resource_id, owner, "refresh", lock.acquired_at)
+        return lock
 
 def release_lock(conn: sqlite3.Connection, resource_id: str, owner: str) -> None:
     """Release a lock on a resource. Raises LockNotOwnedError if 
     the lock is held by someone else. No-op if the resource isn't locked."""
-    existing = check_status(conn, resource_id)
-    if existing is None:
-        return  # No lock to release
-    if existing.owner != owner:
-        raise LockNotOwnedError(f"{resource_id} is locked by {existing.owner}, not {owner}.")
-    cursor = conn.execute("DELETE FROM locks WHERE resource_id = ? AND owner = ?", (resource_id, owner))
-    timestamp = datetime.now(timezone.utc)
-    if cursor.rowcount == 0:
-        raise LockNotOwnedError(f"{resource_id} is no longer owned by {owner}.")
-    _write_to_history(conn, resource_id, owner, "release", timestamp)
-    conn.commit()
+    with conn:
+        existing = check_status(conn, resource_id)
+        if existing is None:
+            return  # No lock to release
+        if existing.owner != owner:
+            raise LockNotOwnedError(f"{resource_id} is locked by {existing.owner}, not {owner}.")
+        cursor = conn.execute("DELETE FROM locks WHERE resource_id = ? AND owner = ?", (resource_id, owner))
+        timestamp = datetime.now(timezone.utc)
+        if cursor.rowcount == 0:
+            raise LockNotOwnedError(f"{resource_id} is no longer owned by {owner}.")
+        _write_to_history(conn, resource_id, owner, "release", timestamp)
 
 def force_release_lock(conn: sqlite3.Connection, resource_id: str) -> Lock | None:
-    """Forcefully release a lock. Use with caution!"""    
-    cursor = conn.execute("DELETE FROM locks WHERE resource_id = ? RETURNING *", (resource_id,))
-    old_lock = cursor.fetchone()  # Fetch the deleted row to ensure the operation succeeded
-    if old_lock is None:
-        return None  # No lock was present to release
-    existing = _row_to_lock(old_lock)  
-    timestamp = datetime.now(timezone.utc)    
-    _write_to_history(conn, resource_id, existing.owner, "force_release", timestamp)
-    conn.commit()
-    return existing
+    """Forcefully release a lock. Use with caution!"""
+    with conn:    
+        cursor = conn.execute("DELETE FROM locks WHERE resource_id = ? RETURNING *", (resource_id,))
+        old_lock = cursor.fetchone()  # Fetch the deleted row to ensure the operation succeeded
+        if old_lock is None:
+            return None  # No lock was present to release
+        existing = _row_to_lock(old_lock)  
+        timestamp = datetime.now(timezone.utc)    
+        _write_to_history(conn, resource_id, existing.owner, "force_release", timestamp)
+        return existing
 
 def list_active_locks(conn: sqlite3.Connection) -> list[Lock]:
     """Return a list of all currently active locks."""
