@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 *.db
 .pytest_cache/
+WISHLIST.md
 
 # macOS
 .DS_Store
