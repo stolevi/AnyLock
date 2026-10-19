@@ -72,6 +72,17 @@ def _write_to_history(conn: sqlite3.Connection, resource_id: str, owner:str, eve
         (resource_id, owner, event_type, timestamp.isoformat())      
     )
 
+def _lock_information_on_resource(conn: sqlite3.Connection, resource_id: str) -> Lock | None:
+    """Return the current Lock for a resource, even if it's expired. 
+    Returns None if the resource was released or never locked at all."""
+    row = conn.execute(
+        "SELECT * FROM locks WHERE resource_id = ?", (resource_id,)
+    ).fetchone()
+    if row is None:
+        return None
+    lock = _row_to_lock(row)
+    return lock  # Return the lock even if it's expired, for informational purposes
+
 def check_status(conn: sqlite3.Connection, resource_id: str) -> Lock | None:
     """Return the current Lock for a resource, or None if it's unlocked 
     (or the lock has expired)."""
@@ -89,6 +100,7 @@ def acquire_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duratio
     """Acquire a lock on a resource. raises LockConflictError if someone 
     else already holds it."""
     with conn:
+        old_lock = _lock_information_on_resource(conn, resource_id)  # Check for existing lock, even if expired
         lock = _write_lock(conn, resource_id, owner, duration)
         if lock is None:
             existing = check_status(conn, resource_id)
@@ -97,9 +109,10 @@ def acquire_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duratio
             lock = _write_lock(conn, resource_id, owner, duration)
             if lock is None:
                 raise LockConflictError(f"{resource_id} was briefly contested, please try again.")
+        if old_lock is not None and old_lock.is_expired():
+            _write_to_history(conn, resource_id, old_lock.owner, "expired", timestamp=old_lock.expires_at)
         _write_to_history(conn, resource_id, owner, "acquire", lock.acquired_at)
         return lock
-
    
 def refresh_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration: timedelta | None = None) -> Lock:
     """Extend the lease of an existing lock by 'owner'. Raises 
