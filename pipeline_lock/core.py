@@ -35,15 +35,16 @@ def _row_to_history_event(row: sqlite3.Row) -> LockEvent:
         timestamp=datetime.fromisoformat(row["timestamp"]),
     )
 
-def _write_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration: timedelta | None = None) -> Lock | None:
+def _write_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration: timedelta | None = None, acquired_at: datetime | None = None) -> Lock | None:
     """Helper function to write a lock to the database. Used by both 
     acquire_lock and refresh_lock to avoid code duplication."""
     now = datetime.now(timezone.utc)
     actual_duration = duration if duration is not None else DEFAULT_LOCK_DURATION
+    actual_acquired_at = acquired_at if acquired_at is not None else now
     new_lock = Lock(
         resource_id=resource_id,
         owner=owner,
-        acquired_at=now,
+        acquired_at=actual_acquired_at,
         expires_at=now + actual_duration,
     )
     cursor = conn.execute(
@@ -124,13 +125,13 @@ def refresh_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duratio
             raise ResourceNotLockedError(f"{resource_id} is not currently locked.")
         if existing.owner != owner:
             raise LockNotOwnedError(f"{resource_id} is locked by {existing.owner}, not {owner}.")
-        lock = _write_lock(conn, resource_id, owner, duration)
+        lock = _write_lock(conn, resource_id, owner, duration, acquired_at=existing.acquired_at)
         if lock is None:
             current = check_status(conn, resource_id)
             if current is not None:
                 raise LockNotOwnedError(f"{resource_id} is now locked by {current.owner}, not {owner}.")
             raise LockNotOwnedError(f"{resource_id} is no longer owned by {owner}.")
-        _write_to_history(conn, resource_id, owner, "refresh", lock.acquired_at)
+        _write_to_history(conn, resource_id, owner, "refresh", timestamp=datetime.now(timezone.utc))
         return lock
 
 def release_lock(conn: sqlite3.Connection, resource_id: str, owner: str) -> None:
