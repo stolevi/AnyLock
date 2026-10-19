@@ -2,7 +2,12 @@ import sqlite3
 
 class NotAuthorizedError(Exception):
     """Raised when the user is not authorized to call force_release."""
-    
+
+def _supervisors_empty(conn: sqlite3.Connection) -> bool:
+    """Check if the supervisors table is empty."""
+    row = conn.execute("SELECT 1 FROM supervisors LIMIT 1").fetchone()
+    return row is None
+
 def is_supervisor(conn: sqlite3.Connection, supervisor_name: str) -> bool:
     """Check if a given name is in the supervisors table."""
     row = conn.execute(
@@ -10,10 +15,16 @@ def is_supervisor(conn: sqlite3.Connection, supervisor_name: str) -> bool:
     ).fetchone()
     return row is not None
 
+def require_supervisor_or_bootstrap(conn: sqlite3.Connection, initiated_by: str) -> None:
+    """Trigger require_supervisor if the supervisors table is not empty."""
+    if _supervisors_empty(conn):
+        return
+    require_supervisor(conn, initiated_by)
+
 def require_supervisor(conn: sqlite3.Connection, supervisor_name: str) -> None:
     """Raise NotAuthorizedError if the given name is not a supervisor."""
     if not is_supervisor(conn, supervisor_name):
-        raise NotAuthorizedError(f"{supervisor_name} is not authorized to force release locks.")
+        raise NotAuthorizedError(f"{supervisor_name} is not on the list of supervisors.")
 
 def add_supervisor(conn: sqlite3.Connection, supervisor_name: str) -> None:
     """Add a new supervisor to the supervisors table"""

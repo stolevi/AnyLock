@@ -3,7 +3,7 @@ import time
 from pipeline_lock.db import get_connection
 from pipeline_lock.core import check_status, acquire_lock, refresh_lock, release_lock, force_release_lock, list_active_locks, LockConflictError, LockNotOwnedError, ResourceNotLockedError
 from datetime import timedelta
-from pipeline_lock.permissions import is_supervisor, add_supervisor as add_supervisor_to_db, remove_supervisor as remove_supervisor_from_db, NotAuthorizedError, require_supervisor
+from pipeline_lock.permissions import is_supervisor, add_supervisor as add_supervisor_to_db, remove_supervisor as remove_supervisor_from_db, NotAuthorizedError, require_supervisor, require_supervisor_or_bootstrap
 from pipeline_lock.adapters.base import PipelineAdapter
 from pipeline_lock.adapters.mock import MockAdapter
 
@@ -123,17 +123,29 @@ def release(resource_id:str, owner: str) -> None:
 
 @cli.command(name="add-supervisor")
 @click.argument("supervisor_name")
-def add_supervisor(supervisor_name: str) -> None:
+@click.option("--initiated-by", required=True)
+def add_supervisor(supervisor_name: str, initiated_by: str) -> None:
     """Add a new supervisor."""
     conn = get_connection()
+    try:
+        require_supervisor_or_bootstrap(conn, initiated_by)
+    except NotAuthorizedError as e:
+        click.secho(str(e), fg="red")
+        return    
     add_supervisor_to_db(conn, supervisor_name)
     click.secho(f"Supervisor {supervisor_name} added.", fg="green")
 
 @cli.command(name="remove-supervisor")
 @click.argument("supervisor_name")
-def remove_supervisor(supervisor_name: str) -> None:
+@click.option("--initiated-by", required=True)
+def remove_supervisor(supervisor_name: str, initiated_by: str) -> None:
     """Remove a supervisor."""
     conn = get_connection()
+    try:
+        require_supervisor(conn, initiated_by)
+    except NotAuthorizedError as e:
+        click.secho(str(e), fg="red")
+        return
     remove_supervisor_from_db(conn, supervisor_name)
     click.secho(f"Supervisor {supervisor_name} removed.", fg="green")
 
