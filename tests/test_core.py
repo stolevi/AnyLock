@@ -26,6 +26,18 @@ def test_acquire_lock_conflict(conn):
         acquire_lock(conn, "resource_id", "another_owner")
     assert check_status(conn, "resource_id").owner == "owner"
 
+def test_acquire_writes_expired_lock_to_history(conn):
+    old_lock = acquire_lock(conn, "resource_id", "old_owner", duration=timedelta(hours=-1))
+    new_lock = acquire_lock(conn, "resource_id", "new_owner")
+    resource_history = get_resource_history(conn, "resource_id")
+    assert len(resource_history) == 3
+    assert resource_history[0].event_type == "acquire"
+    assert resource_history[1].event_type == "acquire"
+    assert resource_history[2].event_type == "expired"
+    assert resource_history[0].owner == "new_owner"
+    assert resource_history[1].owner == "old_owner"
+    assert resource_history[2].owner == "old_owner"
+
 def test_refresh_lock(conn):
     lock = acquire_lock(conn, "resource_id", "owner", duration=timedelta(hours=1))
     fresh_lock = refresh_lock(conn, "resource_id", "owner", duration=timedelta(hours=2))
