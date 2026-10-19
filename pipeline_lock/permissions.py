@@ -33,9 +33,23 @@ def add_supervisor(conn: sqlite3.Connection, supervisor_name: str) -> None:
     )
     conn.commit()
 
+def add_supervisor_with_bootstrap(conn: sqlite3.Connection, supervisor_name: str, initiated_by: str) -> None:
+    """Add a new supervisor, allowing the first one to be added without authorization."""
+    with conn:
+        conn.execute("BEGIN IMMEDIATE")
+        require_supervisor_or_bootstrap(conn, initiated_by)
+        add_supervisor(conn, supervisor_name)
+
 def remove_supervisor(conn: sqlite3.Connection, supervisor_name: str) -> None:
     """Remove a supervisor from the supervisors table"""
     conn.execute(
         "DELETE FROM supervisors WHERE supervisor_name = ?", (supervisor_name,)
     )
     conn.commit()
+
+def remove_supervisor_with_lock(conn: sqlite3.Connection, supervisor_name: str, initiated_by: str) -> None:
+    """Remove a supervisor, requiring authorization from another supervisor."""
+    with conn:
+        conn.execute("BEGIN IMMEDIATE")
+        require_supervisor(conn, initiated_by)
+        remove_supervisor(conn, supervisor_name)

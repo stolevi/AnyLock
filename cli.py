@@ -3,7 +3,7 @@ import time
 from pipeline_lock.db import get_connection
 from pipeline_lock.core import check_status, acquire_lock, refresh_lock, release_lock, force_release_lock, list_active_locks, LockConflictError, LockNotOwnedError, ResourceNotLockedError
 from datetime import timedelta
-from pipeline_lock.permissions import is_supervisor, add_supervisor as add_supervisor_to_db, remove_supervisor as remove_supervisor_from_db, NotAuthorizedError, require_supervisor, require_supervisor_or_bootstrap
+from pipeline_lock.permissions import is_supervisor, add_supervisor as add_supervisor_to_db, remove_supervisor as remove_supervisor_from_db, NotAuthorizedError, require_supervisor, require_supervisor_or_bootstrap, add_supervisor_with_bootstrap, remove_supervisor_with_lock
 from pipeline_lock.adapters.base import PipelineAdapter
 from pipeline_lock.adapters.mock import MockAdapter
 
@@ -128,10 +128,7 @@ def add_supervisor(supervisor_name: str, initiated_by: str) -> None:
     """Add a new supervisor."""
     conn = get_connection()
     try:
-        with conn:
-            conn.execute("BEGIN IMMEDIATE")
-            require_supervisor_or_bootstrap(conn, initiated_by)
-            add_supervisor_to_db(conn, supervisor_name)
+        add_supervisor_with_bootstrap(conn, supervisor_name, initiated_by)
     except NotAuthorizedError as e:
         click.secho(str(e), fg="red")
         return    
@@ -144,10 +141,7 @@ def remove_supervisor(supervisor_name: str, initiated_by: str) -> None:
     """Remove a supervisor."""
     conn = get_connection()    
     try:
-        with conn:
-            conn.execute("BEGIN IMMEDIATE")
-            require_supervisor(conn, initiated_by)
-            remove_supervisor_from_db(conn, supervisor_name)
+        remove_supervisor_with_lock(conn, supervisor_name, initiated_by)
     except NotAuthorizedError as e:
         click.secho(str(e), fg="red")
         return   
