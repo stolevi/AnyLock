@@ -1,7 +1,7 @@
 import sqlite3
 
 class NotAuthorizedError(Exception):
-    """Raised when the user is not authorized to call force_release."""
+    """Raised when the user is not an authorized supervisor."""
 
 def _supervisors_empty(conn: sqlite3.Connection) -> bool:
     """Check if the supervisors table is empty."""

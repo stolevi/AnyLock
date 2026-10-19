@@ -128,11 +128,13 @@ def add_supervisor(supervisor_name: str, initiated_by: str) -> None:
     """Add a new supervisor."""
     conn = get_connection()
     try:
-        require_supervisor_or_bootstrap(conn, initiated_by)
+        with conn:
+            conn.execute("BEGIN IMMEDIATE")
+            require_supervisor_or_bootstrap(conn, initiated_by)
+            add_supervisor_to_db(conn, supervisor_name)
     except NotAuthorizedError as e:
         click.secho(str(e), fg="red")
         return    
-    add_supervisor_to_db(conn, supervisor_name)
     click.secho(f"Supervisor {supervisor_name} added.", fg="green")
 
 @cli.command(name="remove-supervisor")
@@ -140,13 +142,15 @@ def add_supervisor(supervisor_name: str, initiated_by: str) -> None:
 @click.option("--initiated-by", required=True)
 def remove_supervisor(supervisor_name: str, initiated_by: str) -> None:
     """Remove a supervisor."""
-    conn = get_connection()
+    conn = get_connection()    
     try:
-        require_supervisor(conn, initiated_by)
+        with conn:
+            conn.execute("BEGIN IMMEDIATE")
+            require_supervisor(conn, initiated_by)
+            remove_supervisor_from_db(conn, supervisor_name)
     except NotAuthorizedError as e:
         click.secho(str(e), fg="red")
-        return
-    remove_supervisor_from_db(conn, supervisor_name)
+        return   
     click.secho(f"Supervisor {supervisor_name} removed.", fg="green")
 
 @cli.command(name="force-release")
