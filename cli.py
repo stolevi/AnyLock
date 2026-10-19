@@ -49,6 +49,8 @@ def _parse_duration(duration_str: str) -> timedelta:
         value = int(duration_str[:-1])
     except ValueError:
         raise click.BadParameter("Duration must be a number followed by 'm' (minutes), 'h' (hours), or 'd' (days).")
+    if value <= 0:
+        raise click.BadParameter("Duration must be a positive integer.")
     if unit == "m":
         return timedelta(minutes=value)
     elif unit == "h":
