@@ -16,9 +16,12 @@ files can't be merged like text or code.
 
 ### Core functions
 
-* acquire: acquire a lock on a resource with your name or user_id.
-* refresh: refresh existing lock as owner of that lock.
+* acquire: acquire a lock on a resource with your name or user_id. Locks expire automatically after a default duration of 8 hours, or a custom duration you specify, so a forgotten lock can't block a resource indefinitely.
+
+* refresh: refresh an existing lock as its owner — extends the expiry for a default duration of 8 hours, or a custom duration you specify, without needing to release and re-acquire.
+
 * release: release a lock as owner of that lock.
+
 * force-release: force-release a lock as supervisor.
 
 ### Lock event history
@@ -205,5 +208,4 @@ The project is covered by a pytest suite (`tests/`) exercising the core locking 
 * **TVPaint plugin** — the big one, and what we're about to dig into. If TVPaint's scripting environment lets a plugin query and react to lock state in real time, this closes the gap between "advisory" and genuinely enforced locking for the one tool AnyLock was built around.
 * **Real filesystem adapter** — replace `MockAdapter` with one that validates resource IDs against an actual production directory structure, so AnyLock can be pointed at a real project instead of a fixed test set.
 * **Stronger authorization** — the current supervisor system is a simple allowlist check (`is_supervisor`); no passwords, sessions, or per-user identity beyond whatever string is passed in. Worth revisiting once there's a real multi-user deployment to support.
-* **Stale lock detection / expiration** — right now a lock lives until someone releases or force-releases it. An optional TTL or "idle too long" flag would help catch abandoned locks on a busy production.
 * **Web GUI** — `core.py` was deliberately kept free of any CLI-specific concerns so a web frontend could call into the same locking logic later without touching it.
