@@ -1,5 +1,7 @@
 import pytest
+
 from pipeline_lock.db import get_connection
+
 
 @pytest.fixture
 def conn():

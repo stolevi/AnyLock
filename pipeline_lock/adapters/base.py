@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+
 class PipelineAdapter(ABC):
     @abstractmethod
     def resource_exists(self, resource_id: str) -> bool:

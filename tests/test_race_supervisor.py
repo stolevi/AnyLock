@@ -1,7 +1,8 @@
 import sqlite3
-import pytest
-import pipeline_lock.permissions as permissions
+
+from pipeline_lock import permissions
 from pipeline_lock.db import get_connection
+
 
 def test_no_two_supervisors_can_be_added_without_authorization(tmp_path, monkeypatch):
     """The first supervisor can be added without authorization, but the second cannot."""

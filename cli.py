@@ -1,11 +1,28 @@
-import click
 import time
-from pipeline_lock.db import get_connection
-from pipeline_lock.core import check_status, acquire_lock, refresh_lock, release_lock, force_release_lock, list_active_locks, LockConflictError, LockNotOwnedError, ResourceNotLockedError
 from datetime import timedelta
-from pipeline_lock.permissions import is_supervisor, add_supervisor as add_supervisor_to_db, remove_supervisor as remove_supervisor_from_db, NotAuthorizedError, require_supervisor, require_supervisor_or_bootstrap, add_supervisor_with_bootstrap, remove_supervisor_with_lock
-from pipeline_lock.adapters.base import PipelineAdapter
+
+import click
 from pipeline_lock.adapters.mock import MockAdapter
+
+from pipeline_lock.adapters.base import PipelineAdapter
+from pipeline_lock.core import (
+    LockConflictError,
+    LockNotOwnedError,
+    ResourceNotLockedError,
+    acquire_lock,
+    check_status,
+    force_release_lock,
+    list_active_locks,
+    refresh_lock,
+    release_lock,
+)
+from pipeline_lock.db import get_connection
+from pipeline_lock.permissions import (
+    NotAuthorizedError,
+    add_supervisor_with_bootstrap,
+    remove_supervisor_with_lock,
+    require_supervisor,
+)
 
 ANIMATION_ACQUIRE = ["[ ]  ", "[ - ]", "[==] "]
 ANIMATION_REFRESH = ["[--]", "[**]", "[==]"]

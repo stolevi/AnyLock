@@ -1,6 +1,20 @@
+from datetime import UTC, datetime, timedelta
+
 import pytest
-from pipeline_lock.core import check_status, acquire_lock, refresh_lock, release_lock, force_release_lock, list_active_locks, get_resource_history, LockConflictError, LockNotOwnedError, ResourceNotLockedError
-from datetime import datetime, timezone, timedelta
+
+from pipeline_lock.core import (
+    LockConflictError,
+    LockNotOwnedError,
+    ResourceNotLockedError,
+    acquire_lock,
+    check_status,
+    force_release_lock,
+    get_resource_history,
+    list_active_locks,
+    refresh_lock,
+    release_lock,
+)
+
 
 def test_check_status_lock_not_existing(conn):
     assert check_status(conn, "resource_id") is None
@@ -17,7 +31,7 @@ def test_acquire_lock(conn):
     lock = acquire_lock(conn, "resource_id", "owner")
     assert lock.resource_id == "resource_id"
     assert lock.owner == "owner"
-    assert lock.expires_at > datetime.now(timezone.utc)
+    assert lock.expires_at > datetime.now(UTC)
     assert check_status(conn, "resource_id") == lock
 
 def test_acquire_lock_conflict(conn):

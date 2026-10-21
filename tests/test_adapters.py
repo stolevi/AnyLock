@@ -1,6 +1,8 @@
 import pytest
-from tests.mock_adapter import MockAdapter
+
 from pipeline_lock.adapters.base import PipelineAdapter
+from tests.mock_adapter import MockAdapter
+
 
 def test_resource_exists():
     adapter = MockAdapter({"SQ01_SH010", "SQ02_SH010", "SQ03_SH030"})

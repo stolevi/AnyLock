@@ -1,16 +1,18 @@
-import sys, multiprocessing as mp
+import multiprocessing as mp
+import sys
 from pathlib import Path
 
+
 def worker(db, name, barrier, out):
+    from pipeline_lock.core import LockConflictError, acquire_lock
     from pipeline_lock.db import get_connection
-    from pipeline_lock.core import acquire_lock, LockConflictError
     conn = get_connection(db)
     barrier.wait()
     try:
         acquire_lock(conn, "SQ01_SH070", name); out.put(name)
     except LockConflictError:
         pass
-    except Exception as e:
+    except Exception as e: # noqa: BLE001
         out.put("ERR " + type(e).__name__)
 
 if __name__ == "__main__":
@@ -18,7 +20,8 @@ if __name__ == "__main__":
     errs = []
     for r in range(rounds):
         db = tmp / f"r{r}.db"
-        from pipeline_lock.db import get_connection; get_connection(db).close()
+        from pipeline_lock.db import get_connection
+        get_connection(db).close()
         b = mp.Barrier(n); q = mp.Queue()
         ps = [mp.Process(target=worker, args=(db, f"artist{i}", b, q)) for i in range(n)]
         [p.start() for p in ps]; [p.join() for p in ps]

@@ -1,5 +1,13 @@
 import pytest
-from pipeline_lock.permissions import is_supervisor, require_supervisor, add_supervisor, remove_supervisor, NotAuthorizedError
+
+from pipeline_lock.permissions import (
+    NotAuthorizedError,
+    add_supervisor,
+    is_supervisor,
+    remove_supervisor,
+    require_supervisor,
+)
+
 
 def test_is_supervisor(conn):
     add_supervisor(conn, "supervisor_name_1")

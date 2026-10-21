@@ -1,5 +1,6 @@
 import sqlite3
 
+
 class NotAuthorizedError(Exception):
     """Raised when the user is not an authorized supervisor."""
 

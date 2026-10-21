@@ -1,6 +1,6 @@
 import sqlite3
-import pytest
-import pipeline_lock.core as core
+
+from pipeline_lock import core
 from pipeline_lock.db import get_connection
 
 

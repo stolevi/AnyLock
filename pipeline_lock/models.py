@@ -1,6 +1,7 @@
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
+
 
 class StorageType(Enum):
     FILE_SYSTEM = "file_system"
@@ -46,7 +47,7 @@ class Lock:
     expires_at: datetime
 
     def is_expired(self, now: datetime | None = None) -> bool:
-        current_time = now if now is not None else datetime.now(timezone.utc)
+        current_time = now if now is not None else datetime.now(UTC)
         return current_time >= self.expires_at
 
 @dataclass

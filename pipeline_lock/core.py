@@ -1,5 +1,6 @@
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+
 from pipeline_lock.models import Lock, LockEvent
 
 DEFAULT_LOCK_DURATION = timedelta(hours=8)  # Default lock duration of 8 hours
@@ -38,7 +39,7 @@ def _row_to_history_event(row: sqlite3.Row) -> LockEvent:
 def _write_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duration: timedelta | None = None, acquired_at: datetime | None = None) -> Lock | None:
     """Helper function to write a lock to the database. Used by both 
     acquire_lock and refresh_lock to avoid code duplication."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     actual_duration = duration if duration is not None else DEFAULT_LOCK_DURATION
     actual_acquired_at = acquired_at if acquired_at is not None else now
     new_lock = Lock(
@@ -131,7 +132,7 @@ def refresh_lock(conn: sqlite3.Connection, resource_id: str, owner: str, duratio
             if current is not None:
                 raise LockNotOwnedError(f"{resource_id} is now locked by {current.owner}, not {owner}.")
             raise LockNotOwnedError(f"{resource_id} is no longer owned by {owner}.")
-        _write_to_history(conn, resource_id, owner, "refresh", timestamp=datetime.now(timezone.utc))
+        _write_to_history(conn, resource_id, owner, "refresh", timestamp=datetime.now(UTC))
         return lock
 
 def release_lock(conn: sqlite3.Connection, resource_id: str, owner: str) -> None:
@@ -144,7 +145,7 @@ def release_lock(conn: sqlite3.Connection, resource_id: str, owner: str) -> None
         if existing.owner != owner:
             raise LockNotOwnedError(f"{resource_id} is locked by {existing.owner}, not {owner}.")
         cursor = conn.execute("DELETE FROM locks WHERE resource_id = ? AND owner = ?", (resource_id, owner))
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
         if cursor.rowcount == 0:
             raise LockNotOwnedError(f"{resource_id} is no longer owned by {owner}.")
         _write_to_history(conn, resource_id, owner, "release", timestamp)
@@ -157,7 +158,7 @@ def force_release_lock(conn: sqlite3.Connection, resource_id: str) -> Lock | Non
         if old_lock is None:
             return None  # No lock was present to release
         existing = _row_to_lock(old_lock)  
-        timestamp = datetime.now(timezone.utc)    
+        timestamp = datetime.now(UTC)    
         _write_to_history(conn, resource_id, existing.owner, "force_release", timestamp)
         return existing
 
