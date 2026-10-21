@@ -1,5 +1,5 @@
 import pytest
-from pipeline_lock.adapters.mock import MockAdapter
+from tests.mock_adapter import MockAdapter
 from pipeline_lock.adapters.base import PipelineAdapter
 
 def test_resource_exists():
