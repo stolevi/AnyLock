@@ -56,6 +56,12 @@ def test_refresh_lock_not_owned_error(conn):
         refresh_lock(conn, "resource_id", "another_owner")
     assert check_status(conn, "resource_id") == lock
 
+def test_refresh_lock_preserves_acquired_at(conn):
+    original = acquire_lock(conn, "resource_id", "owner", duration=timedelta(hours=1))
+    refreshed = refresh_lock(conn, "resource_id", "owner", duration=timedelta(hours=2))
+    assert refreshed.acquired_at == original.acquired_at
+    assert refreshed.expires_at > original.expires_at
+
 def test_release_lock(conn):
     acquire_lock(conn, "resource_id", "owner")
     release_lock(conn, "resource_id", "owner")
