@@ -51,6 +51,8 @@ def test_acquire_writes_expired_lock_to_history(conn):
     assert resource_history[0].owner == "new_owner"
     assert resource_history[1].owner == "old_owner"
     assert resource_history[2].owner == "old_owner"
+    assert old_lock.expires_at == resource_history[2].timestamp
+    assert new_lock.acquired_at == resource_history[0].timestamp
 
 def test_refresh_lock(conn):
     lock = acquire_lock(conn, "resource_id", "owner", duration=timedelta(hours=1))
