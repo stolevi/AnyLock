@@ -22,9 +22,9 @@ if __name__ == "__main__":
         db = tmp / f"r{r}.db"
         from pipeline_lock.db import get_connection
         get_connection(db).close()
-        b = mp.Barrier(n); q = mp.Queue()
+        b = mp.Barrier(n); q = mp.Queue() # type: ignore[var-annotated]
         ps = [mp.Process(target=worker, args=(db, f"artist{i}", b, q)) for i in range(n)]
-        [p.start() for p in ps]; [p.join() for p in ps]
+        [p.start() for p in ps]; [p.join() for p in ps] # type: ignore[func-returns-value]
         winners = []
         while not q.empty(): winners.append(q.get())
         if len([w for w in winners if not w.startswith("ERR")]) > 1: double += 1
