@@ -95,10 +95,11 @@ def acquire(resource_id: str, owner: str, duration: str | None) -> None:
     if not _resource_exists_or_error(adapter, resource_id):
         return
     with open_and_close_connection() as conn:
+        parsed_duration: timedelta | None = None
         if duration is not None:
-            duration = _parse_duration(duration)
+            parsed_duration = _parse_duration(duration)
         try:
-            lock = acquire_lock(conn, resource_id, owner, duration)
+            lock = acquire_lock(conn, resource_id, owner, parsed_duration)
             _print_event_animation(ANIMATION_ACQUIRE)
             click.secho(f"Lock acquired on {resource_id} by {owner} until {lock.expires_at}.", fg="green")
         except LockConflictError as e:
@@ -114,10 +115,11 @@ def refresh(resource_id: str, owner: str, duration: str | None) -> None:
     if not _resource_exists_or_error(adapter, resource_id):
         return
     with open_and_close_connection() as conn:
+        parsed_duration: timedelta | None = None
         if duration is not None:
-            duration = _parse_duration(duration)
+            parsed_duration = _parse_duration(duration)
         try:
-            lock = refresh_lock(conn, resource_id, owner, duration)
+            lock = refresh_lock(conn, resource_id, owner, parsed_duration)
             _print_event_animation(ANIMATION_REFRESH)
             click.secho(f"Lock on {resource_id} refreshed by {owner} until {lock.expires_at}.", fg="green")
         except LockNotOwnedError as e:
