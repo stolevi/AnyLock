@@ -1,7 +1,17 @@
 import sqlite3
 from pathlib import Path
+from contextlib import contextmanager
 
 DB_PATH = Path(__file__).parent.parent / "pipeline_lock.db"
+
+@contextmanager
+def open_and_close_connection(db_path: str | Path = DB_PATH):
+    """Context manager to open and close a database connection."""
+    conn = get_connection(db_path)
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 def get_connection(db_path: str | Path = DB_PATH) -> sqlite3.Connection:
     """Get a connection to the SQLite database."""
@@ -42,4 +52,3 @@ def init_db(conn: sqlite3.Connection) -> None:
         """
     )
     conn.commit()
-

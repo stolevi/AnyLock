@@ -16,7 +16,10 @@ from pipeline_lock.core import (
     refresh_lock,
     release_lock,
 )
-from pipeline_lock.db import get_connection
+from pipeline_lock.db import (
+    get_connection,
+    open_and_close_connection,
+)
 from pipeline_lock.permissions import (
     NotAuthorizedError,
     add_supervisor_with_bootstrap,
@@ -92,15 +95,15 @@ def acquire(resource_id: str, owner: str, duration: str | None) -> None:
     adapter = MockAdapter({"SQ01_SH070", "SQ04_SH050", "SQ06_SH030"})
     if not _resource_exists_or_error(adapter, resource_id):
         return
-    conn = get_connection()
-    if duration is not None:
-        duration = _parse_duration(duration)
-    try:
-        lock = acquire_lock(conn, resource_id, owner, duration)
-        _print_event_animation(ANIMATION_ACQUIRE)
-        click.secho(f"Lock acquired on {resource_id} by {owner} until {lock.expires_at}.", fg="green")
-    except LockConflictError as e:
-        click.secho(str(e), fg="red")
+    with open_and_close_connection() as conn:
+        if duration is not None:
+            duration = _parse_duration(duration)
+        try:
+            lock = acquire_lock(conn, resource_id, owner, duration)
+            _print_event_animation(ANIMATION_ACQUIRE)
+            click.secho(f"Lock acquired on {resource_id} by {owner} until {lock.expires_at}.", fg="green")
+        except LockConflictError as e:
+            click.secho(str(e), fg="red")
 
 @cli.command()
 @click.argument("resource_id")
