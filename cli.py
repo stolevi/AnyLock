@@ -2,9 +2,9 @@ import time
 from datetime import timedelta
 
 import click
-from pipeline_lock.adapters.mock import MockAdapter
 
 from pipeline_lock.adapters.base import PipelineAdapter
+from pipeline_lock.adapters.mock import MockAdapter
 from pipeline_lock.core import (
     LockConflictError,
     LockNotOwnedError,
@@ -17,7 +17,6 @@ from pipeline_lock.core import (
     release_lock,
 )
 from pipeline_lock.db import (
-    get_connection,
     open_and_close_connection,
 )
 from pipeline_lock.permissions import (
@@ -43,12 +42,12 @@ def cli():
 @click.argument("resource_id")
 def status(resource_id: str) -> None:
     """Check the status of a resource lock."""
-    conn = get_connection()
-    lock = check_status(conn, resource_id)
-    if lock is None:
-        click.secho(f"{resource_id} is not currently locked.", fg="blue")
-    else:
-        click.secho(f"{resource_id} is locked by {lock.owner} until {lock.expires_at}.", fg="blue")
+    with open_and_close_connection() as conn:
+        lock = check_status(conn, resource_id)
+        if lock is None:
+            click.secho(f"{resource_id} is not currently locked.", fg="blue")
+        else:
+            click.secho(f"{resource_id} is locked by {lock.owner} until {lock.expires_at}.", fg="blue")
 
 def _resource_exists_or_error(adapter: PipelineAdapter, resource_id: str) -> bool:
     """Check a resource_id for existence in the directory 
@@ -114,60 +113,60 @@ def refresh(resource_id: str, owner: str, duration: str | None) -> None:
     adapter = MockAdapter({"SQ01_SH070", "SQ04_SH050", "SQ06_SH030"})
     if not _resource_exists_or_error(adapter, resource_id):
         return
-    conn = get_connection()
-    if duration is not None:
-        duration = _parse_duration(duration)
-    try:
-        lock = refresh_lock(conn, resource_id, owner, duration)
-        _print_event_animation(ANIMATION_REFRESH)
-        click.secho(f"Lock on {resource_id} refreshed by {owner} until {lock.expires_at}.", fg="green")
-    except LockNotOwnedError as e:
-        click.secho(str(e), fg="red")
-    except ResourceNotLockedError as e:
-        click.secho(str(e), fg="red")
+    with open_and_close_connection() as conn:
+        if duration is not None:
+            duration = _parse_duration(duration)
+        try:
+            lock = refresh_lock(conn, resource_id, owner, duration)
+            _print_event_animation(ANIMATION_REFRESH)
+            click.secho(f"Lock on {resource_id} refreshed by {owner} until {lock.expires_at}.", fg="green")
+        except LockNotOwnedError as e:
+            click.secho(str(e), fg="red")
+        except ResourceNotLockedError as e:
+            click.secho(str(e), fg="red")
 
 @cli.command()
 @click.argument("resource_id")
 @click.option("--owner", required=True)
 def release(resource_id:str, owner: str) -> None:
     """Release a lock on a resource as the owner of the lock."""
-    conn = get_connection()
-    locked = check_status(conn, resource_id)
-    if locked is None:
-        click.secho(f"No lock to release on {resource_id}.", fg="blue")
-        return
-    try:
-        release_lock(conn, resource_id, owner)
-        _print_event_animation(ANIMATION_RELEASE)
-        click.secho(f"Lock on {resource_id} released.", fg="green")
-    except LockNotOwnedError as e:
-        click.secho(str(e), fg="red")
+    with open_and_close_connection() as conn:
+        locked = check_status(conn, resource_id)
+        if locked is None:
+            click.secho(f"No lock to release on {resource_id}.", fg="blue")
+            return
+        try:
+            release_lock(conn, resource_id, owner)
+            _print_event_animation(ANIMATION_RELEASE)
+            click.secho(f"Lock on {resource_id} released.", fg="green")
+        except LockNotOwnedError as e:
+            click.secho(str(e), fg="red")
 
 @cli.command(name="add-supervisor")
 @click.argument("supervisor_name")
 @click.option("--initiated-by", required=True)
 def add_supervisor(supervisor_name: str, initiated_by: str) -> None:
     """Add a new supervisor."""
-    conn = get_connection()
-    try:
-        add_supervisor_with_bootstrap(conn, supervisor_name, initiated_by)
-    except NotAuthorizedError as e:
-        click.secho(str(e), fg="red")
-        return    
-    click.secho(f"Supervisor {supervisor_name} added.", fg="green")
+    with open_and_close_connection() as conn:
+        try:
+            add_supervisor_with_bootstrap(conn, supervisor_name, initiated_by)
+        except NotAuthorizedError as e:
+            click.secho(str(e), fg="red")
+            return    
+        click.secho(f"Supervisor {supervisor_name} added.", fg="green")
 
 @cli.command(name="remove-supervisor")
 @click.argument("supervisor_name")
 @click.option("--initiated-by", required=True)
 def remove_supervisor(supervisor_name: str, initiated_by: str) -> None:
     """Remove a supervisor."""
-    conn = get_connection()    
-    try:
-        remove_supervisor_with_lock(conn, supervisor_name, initiated_by)
-    except NotAuthorizedError as e:
-        click.secho(str(e), fg="red")
-        return   
-    click.secho(f"Supervisor {supervisor_name} removed.", fg="green")
+    with open_and_close_connection() as conn:    
+        try:
+            remove_supervisor_with_lock(conn, supervisor_name, initiated_by)
+        except NotAuthorizedError as e:
+            click.secho(str(e), fg="red")
+            return   
+        click.secho(f"Supervisor {supervisor_name} removed.", fg="green")
 
 @cli.command(name="force-release")
 @click.argument("resource_id")
@@ -175,30 +174,30 @@ def remove_supervisor(supervisor_name: str, initiated_by: str) -> None:
 def force_release(resource_id: str, forced_by: str) -> None:
     """Forcefully release a lock on a resource. 
     Only supervisors can do this."""
-    conn = get_connection()
-    try:
-        require_supervisor(conn, forced_by)
-    except NotAuthorizedError as e:
-        click.secho(str(e), fg="red")
-        return
-    released_lock = force_release_lock(conn, resource_id)
-    if released_lock is None:
-        click.secho(f"No lock to force release on {resource_id}.", fg="blue")
-    else:
-        _print_event_animation(ANIMATION_FORCE_RELEASE)
-        click.secho(f"Lock on {resource_id} forcefully released by {forced_by}. It was previously held by {released_lock.owner} until {released_lock.expires_at}.", fg="green")
+    with open_and_close_connection() as conn:
+        try:
+            require_supervisor(conn, forced_by)
+        except NotAuthorizedError as e:
+            click.secho(str(e), fg="red")
+            return
+        released_lock = force_release_lock(conn, resource_id)
+        if released_lock is None:
+            click.secho(f"No lock to force release on {resource_id}.", fg="blue")
+        else:
+            _print_event_animation(ANIMATION_FORCE_RELEASE)
+            click.secho(f"Lock on {resource_id} forcefully released by {forced_by}. It was previously held by {released_lock.owner} until {released_lock.expires_at}.", fg="green")
 
 @cli.command(name="show-locks")
 def show_locks() -> None:
     """Show all currently active locks."""
-    conn = get_connection()
-    active_locks = list_active_locks(conn)
-    if not active_locks:
-        click.secho("No active locks.", fg="blue")
-        return
-    for lock in active_locks:
-        click.secho(f"{lock.resource_id} is locked by {lock.owner} until {lock.expires_at}.", fg="blue")
-        
+    with open_and_close_connection() as conn:
+        active_locks = list_active_locks(conn)
+        if not active_locks:
+            click.secho("No active locks.", fg="blue")
+            return
+        for lock in active_locks:
+            click.secho(f"{lock.resource_id} is locked by {lock.owner} until {lock.expires_at}.", fg="blue")
+            
 
 if __name__ == '__main__':
     cli()
