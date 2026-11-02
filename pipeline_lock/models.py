@@ -59,8 +59,8 @@ class Lock:
 @dataclass
 class LockEvent:
     event_id: int
-    resource_path: str
     project_id: int
+    resource_path: str
     owner: str
     event_type: str
     timestamp: datetime
