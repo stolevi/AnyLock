@@ -2,55 +2,55 @@ import sqlite3
 
 
 class NotAuthorizedError(Exception):
-    """Raised when the user is not an authorized supervisor."""
+    """Raised when the user is not an authorized admin."""
 
-def _supervisors_empty(conn: sqlite3.Connection) -> bool:
-    """Check if the supervisors table is empty."""
-    row = conn.execute("SELECT 1 FROM supervisors LIMIT 1").fetchone()
+def _admins_empty(conn: sqlite3.Connection) -> bool:
+    """Check if the admins table is empty."""
+    row = conn.execute("SELECT 1 FROM admins LIMIT 1").fetchone()
     return row is None
 
-def is_supervisor(conn: sqlite3.Connection, supervisor_name: str) -> bool:
-    """Check if a given name is in the supervisors table."""
+def is_admin(conn: sqlite3.Connection, admin_name: str) -> bool:
+    """Check if a given name is in the admins table."""
     row = conn.execute(
-        "SELECT 1 FROM supervisors WHERE supervisor_name = ?", (supervisor_name,)
+        "SELECT 1 FROM admins WHERE admin_name = ?", (admin_name,)
     ).fetchone()
     return row is not None
 
-def require_supervisor_or_bootstrap(conn: sqlite3.Connection, initiated_by: str) -> None:
-    """Trigger require_supervisor if the supervisors table is not empty."""
-    if _supervisors_empty(conn):
+def require_admin_or_bootstrap(conn: sqlite3.Connection, initiated_by: str) -> None:
+    """Trigger require_admin if the admins table is not empty."""
+    if _admins_empty(conn):
         return
-    require_supervisor(conn, initiated_by)
+    require_admin(conn, initiated_by)
 
-def require_supervisor(conn: sqlite3.Connection, supervisor_name: str) -> None:
-    """Raise NotAuthorizedError if the given name is not a supervisor."""
-    if not is_supervisor(conn, supervisor_name):
-        raise NotAuthorizedError(f"{supervisor_name} is not on the list of supervisors.")
+def require_admin(conn: sqlite3.Connection, admin_name: str) -> None:
+    """Raise NotAuthorizedError if the given name is not an admin."""
+    if not is_admin(conn, admin_name):
+        raise NotAuthorizedError(f"{admin_name} is not on the list of admins.")
 
-def add_supervisor(conn: sqlite3.Connection, supervisor_name: str) -> None:
-    """Add a new supervisor to the supervisors table"""
+def add_admin(conn: sqlite3.Connection, admin_name: str) -> None:
+    """Add a new admin to the admins table"""
     conn.execute(
-        "INSERT OR IGNORE INTO supervisors (supervisor_name) VALUES (?)", (supervisor_name,)
+        "INSERT OR IGNORE INTO admins (admin_name) VALUES (?)", (admin_name,)
     )
     conn.commit()
 
-def add_supervisor_with_bootstrap(conn: sqlite3.Connection, supervisor_name: str, initiated_by: str) -> None:
-    """Add a new supervisor, allowing the first one to be added without authorization."""
+def add_admin_with_bootstrap(conn: sqlite3.Connection, admin_name: str, initiated_by: str) -> None:
+    """Add a new admin, allowing the first one to be added without authorization."""
     with conn:
         conn.execute("BEGIN IMMEDIATE")
-        require_supervisor_or_bootstrap(conn, initiated_by)
-        add_supervisor(conn, supervisor_name)
+        require_admin_or_bootstrap(conn, initiated_by)
+        add_admin(conn, admin_name)
 
-def remove_supervisor(conn: sqlite3.Connection, supervisor_name: str) -> None:
-    """Remove a supervisor from the supervisors table"""
+def remove_admin(conn: sqlite3.Connection, admin_name: str) -> None:
+    """Remove an admin from the admins table"""
     conn.execute(
-        "DELETE FROM supervisors WHERE supervisor_name = ?", (supervisor_name,)
+        "DELETE FROM admins WHERE admin_name = ?", (admin_name,)
     )
     conn.commit()
 
-def remove_supervisor_with_lock(conn: sqlite3.Connection, supervisor_name: str, initiated_by: str) -> None:
-    """Remove a supervisor, requiring authorization from another supervisor."""
+def remove_admin_with_lock(conn: sqlite3.Connection, admin_name: str, initiated_by: str) -> None:
+    """Remove an admin, requiring authorization from another admin."""
     with conn:
         conn.execute("BEGIN IMMEDIATE")
-        require_supervisor(conn, initiated_by)
-        remove_supervisor(conn, supervisor_name)
+        require_admin(conn, initiated_by)
+        remove_admin(conn, admin_name)

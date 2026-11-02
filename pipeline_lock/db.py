@@ -2,8 +2,6 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-
-
 DB_PATH = Path(__file__).parent.parent / "pipeline_lock.db"
 
 @contextmanager
@@ -93,8 +91,8 @@ def init_db(conn: sqlite3.Connection) -> None:
 
     conn.execute(
         """
-        CREATE TABLE IF NOT EXISTS supervisors (
-        supervisor_name TEXT PRIMARY KEY
+        CREATE TABLE IF NOT EXISTS admins (
+        admin_name TEXT PRIMARY KEY
         )
         """
     )

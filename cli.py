@@ -21,9 +21,9 @@ from pipeline_lock.db import (
 )
 from pipeline_lock.permissions import (
     NotAuthorizedError,
-    add_supervisor_with_bootstrap,
-    remove_supervisor_with_lock,
-    require_supervisor,
+    add_admin_with_bootstrap,
+    remove_admin_with_lock,
+    require_admin,
 )
 
 ANIMATION_ACQUIRE = ["[ ]  ", "[ - ]", "[==] "]
@@ -144,41 +144,41 @@ def release(resource_path:str, owner: str) -> None:
         except LockNotOwnedError as e:
             click.secho(str(e), fg="red")
 
-@cli.command(name="add-supervisor")
-@click.argument("supervisor_name")
+@cli.command(name="add-admin")
+@click.argument("admin_name")
 @click.option("--initiated-by", required=True)
-def add_supervisor(supervisor_name: str, initiated_by: str) -> None:
-    """Add a new supervisor."""
+def add_admin(admin_name: str, initiated_by: str) -> None:
+    """Add a new admin."""
     with open_and_close_connection() as conn:
         try:
-            add_supervisor_with_bootstrap(conn, supervisor_name, initiated_by)
+            add_admin_with_bootstrap(conn, admin_name, initiated_by)
         except NotAuthorizedError as e:
             click.secho(str(e), fg="red")
             return    
-        click.secho(f"Supervisor {supervisor_name} added.", fg="green")
+        click.secho(f"Admin {admin_name} added.", fg="green")
 
-@cli.command(name="remove-supervisor")
-@click.argument("supervisor_name")
+@cli.command(name="remove-admin")
+@click.argument("admin_name")
 @click.option("--initiated-by", required=True)
-def remove_supervisor(supervisor_name: str, initiated_by: str) -> None:
-    """Remove a supervisor."""
+def remove_admin(admin_name: str, initiated_by: str) -> None:
+    """Remove an admin."""
     with open_and_close_connection() as conn:    
         try:
-            remove_supervisor_with_lock(conn, supervisor_name, initiated_by)
+            remove_admin_with_lock(conn, admin_name, initiated_by)
         except NotAuthorizedError as e:
             click.secho(str(e), fg="red")
             return   
-        click.secho(f"Supervisor {supervisor_name} removed.", fg="green")
+        click.secho(f"Admin {admin_name} removed.", fg="green")
 
 @cli.command(name="force-release")
 @click.argument("resource_path")
 @click.option("--forced-by", required=True)
 def force_release(resource_path: str, forced_by: str) -> None:
     """Forcefully release a lock on a resource. 
-    Only supervisors can do this."""
+    Only admins can do this."""
     with open_and_close_connection() as conn:
         try:
-            require_supervisor(conn, forced_by)
+            require_admin(conn, forced_by)
         except NotAuthorizedError as e:
             click.secho(str(e), fg="red")
             return
