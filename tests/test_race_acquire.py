@@ -14,15 +14,15 @@ def test_two_people_cannot_both_acquire(tmp_path, monkeypatch):
     winners = []
     original_write = core._write_lock
 
-    def write_after_sarah(conn, resource_id, owner, duration=None):
+    def write_after_sarah(conn, resource_path, owner, duration=None):
         # Levi's check already ran; Sarah slips in before his write.
         monkeypatch.setattr(core, "_write_lock", original_write)
         try:
-            core.acquire_lock(sarah, resource_id, "Sarah")
+            core.acquire_lock(sarah, resource_path, "Sarah")
             winners.append("Sarah")
         except (core.LockConflictError, sqlite3.OperationalError):
             pass  # Sarah was correctly kept out
-        return original_write(conn, resource_id, owner, duration)
+        return original_write(conn, resource_path, owner, duration)
 
     monkeypatch.setattr(core, "_write_lock", write_after_sarah)
     try:

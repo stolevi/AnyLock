@@ -17,33 +17,33 @@ from pipeline_lock.core import (
 
 
 def test_check_status_lock_not_existing(conn):
-    assert check_status(conn, "resource_id") is None
+    assert check_status(conn, "resource_path") is None
 
 def test_check_status_lock_active(conn):
-    lock = acquire_lock(conn, "resource_id", "owner")
-    assert check_status(conn, "resource_id") == lock
+    lock = acquire_lock(conn, "resource_path", "owner")
+    assert check_status(conn, "resource_path") == lock
 
 def test_check_status_lock_expired(conn):
-    acquire_lock(conn, "resource_id", "owner", duration=timedelta(hours=-1))
-    assert check_status(conn, "resource_id") is None
+    acquire_lock(conn, "resource_path", "owner", duration=timedelta(hours=-1))
+    assert check_status(conn, "resource_path") is None
 
 def test_acquire_lock(conn):
-    lock = acquire_lock(conn, "resource_id", "owner")
-    assert lock.resource_id == "resource_id"
+    lock = acquire_lock(conn, "resource_path", "owner")
+    assert lock.resource_path == "resource_path"
     assert lock.owner == "owner"
     assert lock.expires_at > datetime.now(UTC)
-    assert check_status(conn, "resource_id") == lock
+    assert check_status(conn, "resource_path") == lock
 
 def test_acquire_lock_conflict(conn):
-    acquire_lock(conn, "resource_id", "owner")
+    acquire_lock(conn, "resource_path", "owner")
     with pytest.raises(LockConflictError):
-        acquire_lock(conn, "resource_id", "another_owner")
-    assert check_status(conn, "resource_id").owner == "owner"
+        acquire_lock(conn, "resource_path", "another_owner")
+    assert check_status(conn, "resource_path").owner == "owner"
 
 def test_acquire_writes_expired_lock_to_history(conn):
-    old_lock = acquire_lock(conn, "resource_id", "old_owner", duration=timedelta(hours=-1))
-    new_lock = acquire_lock(conn, "resource_id", "new_owner")
-    resource_history = get_resource_history(conn, "resource_id")
+    old_lock = acquire_lock(conn, "resource_path", "old_owner", duration=timedelta(hours=-1))
+    new_lock = acquire_lock(conn, "resource_path", "new_owner")
+    resource_history = get_resource_history(conn, "resource_path")
     assert len(resource_history) == 3
     assert resource_history[0].event_type == "acquire"
     assert resource_history[1].event_type == "acquire"
@@ -55,53 +55,53 @@ def test_acquire_writes_expired_lock_to_history(conn):
     assert new_lock.acquired_at == resource_history[0].timestamp
 
 def test_refresh_lock(conn):
-    lock = acquire_lock(conn, "resource_id", "owner", duration=timedelta(hours=1))
-    fresh_lock = refresh_lock(conn, "resource_id", "owner", duration=timedelta(hours=2))
+    lock = acquire_lock(conn, "resource_path", "owner", duration=timedelta(hours=1))
+    fresh_lock = refresh_lock(conn, "resource_path", "owner", duration=timedelta(hours=2))
     assert fresh_lock.expires_at > lock.expires_at
     assert fresh_lock.owner == lock.owner
-    assert fresh_lock.resource_id == lock.resource_id
+    assert fresh_lock.resource_path == lock.resource_path
 
 def test_refresh_resource_not_locked_error(conn):
     with pytest.raises(ResourceNotLockedError):
-        refresh_lock(conn, "resource_id", "owner")
-    assert check_status(conn, "resource_id") is None
+        refresh_lock(conn, "resource_path", "owner")
+    assert check_status(conn, "resource_path") is None
 
 def test_refresh_lock_not_owned_error(conn):
-    lock = acquire_lock(conn, "resource_id", "owner")
+    lock = acquire_lock(conn, "resource_path", "owner")
     with pytest.raises(LockNotOwnedError):
-        refresh_lock(conn, "resource_id", "another_owner")
-    assert check_status(conn, "resource_id") == lock
+        refresh_lock(conn, "resource_path", "another_owner")
+    assert check_status(conn, "resource_path") == lock
 
 def test_refresh_lock_preserves_acquired_at(conn):
-    original = acquire_lock(conn, "resource_id", "owner", duration=timedelta(hours=1))
-    refreshed = refresh_lock(conn, "resource_id", "owner", duration=timedelta(hours=2))
+    original = acquire_lock(conn, "resource_path", "owner", duration=timedelta(hours=1))
+    refreshed = refresh_lock(conn, "resource_path", "owner", duration=timedelta(hours=2))
     assert refreshed.acquired_at == original.acquired_at
     assert refreshed.expires_at > original.expires_at
 
 def test_release_lock(conn):
-    acquire_lock(conn, "resource_id", "owner")
-    release_lock(conn, "resource_id", "owner")
-    assert check_status(conn, "resource_id") is None
+    acquire_lock(conn, "resource_path", "owner")
+    release_lock(conn, "resource_path", "owner")
+    assert check_status(conn, "resource_path") is None
 
 def test_release_lock_not_owned(conn):
-    lock = acquire_lock(conn, "resource_id",  "owner")
+    lock = acquire_lock(conn, "resource_path",  "owner")
     with pytest.raises(LockNotOwnedError):
-        release_lock(conn, "resource_id", "another_owner")
-    assert check_status(conn, "resource_id") == lock
+        release_lock(conn, "resource_path", "another_owner")
+    assert check_status(conn, "resource_path") == lock
 
 def test_release_lock_noop(conn):
-    release_lock(conn, "resource_id", "owner")
-    assert check_status(conn, "resource_id") is None
+    release_lock(conn, "resource_path", "owner")
+    assert check_status(conn, "resource_path") is None
 
 def test_force_release_lock(conn):
-    lock = acquire_lock(conn, "resource_id", "owner")
-    released_lock = force_release_lock(conn, "resource_id")
-    assert check_status(conn, "resource_id") is None
+    lock = acquire_lock(conn, "resource_path", "owner")
+    released_lock = force_release_lock(conn, "resource_path")
+    assert check_status(conn, "resource_path") is None
     assert released_lock == lock
 
 def test_force_release_lock_noop(conn):
-    released_lock  = force_release_lock(conn, "resource_id")
-    assert check_status(conn, "resource_id") is None
+    released_lock  = force_release_lock(conn, "resource_path")
+    assert check_status(conn, "resource_path") is None
     assert released_lock is None
 
 def test_force_release_lock_records_history_event(conn):
@@ -161,6 +161,6 @@ def test_get_resource_history_multiple_resources(conn):
     resource_history_1 = get_resource_history(conn, "SQ01_SH010") 
     resource_history_2 = get_resource_history(conn, "SQ02_SH020")
     assert len(resource_history_1) == 1
-    assert resource_history_1[0].resource_id == "SQ01_SH010"
+    assert resource_history_1[0].resource_path == "SQ01_SH010"
     assert len(resource_history_2) == 1
-    assert resource_history_2[0].resource_id == "SQ02_SH020"
+    assert resource_history_2[0].resource_path == "SQ02_SH020"

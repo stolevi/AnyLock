@@ -41,7 +41,7 @@ class Project:
 
 @dataclass
 class Lock:
-    resource_id: str
+    resource_path: str
     owner: str
     acquired_at: datetime
     expires_at: datetime
@@ -53,7 +53,7 @@ class Lock:
 @dataclass
 class LockEvent:
     event_id: int
-    resource_id: str
+    resource_path: str
     owner: str
     event_type: str
     timestamp: datetime
