@@ -39,8 +39,14 @@ class Project:
     updated_at: datetime
     enforcement_enabled: bool
 
+@dataclass(frozen=True)
+class ResourceRef:
+    project_id: int
+    resource_path: str
+
 @dataclass
 class Lock:
+    project_id: int
     resource_path: str
     owner: str
     acquired_at: datetime
@@ -54,8 +60,8 @@ class Lock:
 class LockEvent:
     event_id: int
     resource_path: str
+    project_id: int
     owner: str
     event_type: str
     timestamp: datetime
-
     
