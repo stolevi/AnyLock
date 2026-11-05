@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from pipeline_lock.core import (
+from pipeline_lock.locks import (
     LockConflictError,
     LockNotOwnedError,
     ResourceNotLockedError,

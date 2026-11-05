@@ -4,8 +4,8 @@ from pathlib import Path
 
 
 def worker(db, name, barrier, out):
-    from pipeline_lock.core import LockConflictError, acquire_lock
     from pipeline_lock.db import get_connection
+    from pipeline_lock.locks import LockConflictError, acquire_lock
     conn = get_connection(db)
     barrier.wait()
     try:

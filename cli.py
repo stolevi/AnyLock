@@ -5,7 +5,10 @@ import click
 
 from pipeline_lock.adapters.base import PipelineAdapter
 from pipeline_lock.adapters.mock import MockAdapter
-from pipeline_lock.core import (
+from pipeline_lock.db import (
+    open_and_close_connection,
+)
+from pipeline_lock.locks import (
     LockConflictError,
     LockNotOwnedError,
     ResourceNotLockedError,
@@ -15,9 +18,6 @@ from pipeline_lock.core import (
     list_active_locks,
     refresh_lock,
     release_lock,
-)
-from pipeline_lock.db import (
-    open_and_close_connection,
 )
 from pipeline_lock.permissions import (
     NotAuthorizedError,
