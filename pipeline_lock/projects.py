@@ -8,6 +8,9 @@ from pipeline_lock.permissions import require_admin
 class ProjectExistsError(Exception):
     """Raised when a project with that name already exists."""
 
+class ProjectNotFoundError(Exception):
+    """Raised when a project with that name does not exist."""
+
 def _row_to_project(row: sqlite3.Row) -> Project:
     """Convert a database row to a Project."""
     return Project(
@@ -37,4 +40,12 @@ def create_project(conn: sqlite3.Connection, project_name: str, storage_type: St
         except sqlite3.IntegrityError as e:
             raise ProjectExistsError(f"Project with name '{project_name}' already exists.") from e
         return _row_to_project(row)
-   
+
+def get_project_by_name(conn: sqlite3.Connection, project_name: str) -> Project:
+    """Retrieve a project by its name. Raises ProjectNotFoundError if the project does not exist."""
+    row = conn.execute(
+        "SELECT * FROM projects WHERE project_name = ?", (project_name,)
+    ).fetchone()
+    if row is None:
+        raise ProjectNotFoundError(f"Project with name '{project_name}' does not exist.")
+    return _row_to_project(row)

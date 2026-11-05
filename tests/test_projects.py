@@ -2,7 +2,12 @@ import pytest
 
 from pipeline_lock.models import StorageType
 from pipeline_lock.permissions import NotAuthorizedError, add_admin
-from pipeline_lock.projects import ProjectExistsError, create_project
+from pipeline_lock.projects import (
+    ProjectExistsError,
+    ProjectNotFoundError,
+    create_project,
+    get_project_by_name,
+)
 
 
 def test_create_project_as_admin(conn):
@@ -28,3 +33,20 @@ def test_create_duplicate_project_refused(conn):
         create_project(conn, "klonter", StorageType.DROPBOX, "/klonter_dropbox", "Levi")  # Attempt to create a duplicate project
     count = conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0]
     assert count == 1  # Ensure only one project exists
+
+def test_get_project_by_name_exact(conn):
+    add_admin(conn, "Levi") 
+    create_project(conn, "Drijf", StorageType.FILE_SYSTEM, "/drijf", "Levi")
+    klonter = create_project(conn, "Klonter", StorageType.FILE_SYSTEM, "/klonter", "Levi")
+    retrieved_project = get_project_by_name(conn, "Klonter")
+    assert retrieved_project.project_id == klonter.project_id
+
+def test_get_project_by_name_ignores_case(conn):
+    add_admin(conn, "Levi")
+    created_project = create_project(conn, "Klonter", StorageType.FILE_SYSTEM, "/klonter", "Levi")
+    retrieved_project = get_project_by_name(conn, "klonter")
+    assert retrieved_project.project_id == created_project.project_id
+
+def test_get_project_by_name_missing_raises_error(conn):
+    with pytest.raises(ProjectNotFoundError):
+        get_project_by_name(conn, "Klonter")
