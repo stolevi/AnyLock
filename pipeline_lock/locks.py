@@ -100,6 +100,7 @@ def acquire_lock(conn: sqlite3.Connection, ref: ResourceRef, owner: str, duratio
     """Acquire a lock on a resource. raises LockConflictError if someone 
     else already holds it."""
     with conn:
+        conn.execute("BEGIN IMMEDIATE")  # Start a transaction to prevent race conditions
         old_lock = _lock_information_on_resource(conn, ref)  # Check for existing lock, even if expired
         lock = _write_lock(conn, ref, owner, duration)
         if lock is None:
@@ -119,6 +120,7 @@ def refresh_lock(conn: sqlite3.Connection, ref: ResourceRef, owner: str, duratio
     ResourceNotLockedError if the resource is not currently locked or 
     LockNotOwnedError if the lock is held by someone else."""
     with conn:
+        conn.execute("BEGIN IMMEDIATE")  # Start a transaction to prevent race conditions
         existing = check_status(conn, ref)
         if existing is None:
             raise ResourceNotLockedError(f"{ref.resource_path} is not currently locked.")
@@ -137,6 +139,7 @@ def release_lock(conn: sqlite3.Connection, ref: ResourceRef, owner: str) -> None
     """Release a lock on a resource. Raises LockNotOwnedError if 
     the lock is held by someone else. No-op if the resource isn't locked."""
     with conn:
+        conn.execute("BEGIN IMMEDIATE")  # Start a transaction to prevent race conditions
         existing = check_status(conn, ref)
         if existing is None:
             return  # No lock to release
@@ -154,6 +157,7 @@ def release_lock(conn: sqlite3.Connection, ref: ResourceRef, owner: str) -> None
 def force_release_lock(conn: sqlite3.Connection, ref: ResourceRef) -> Lock | None:
     """Forcefully release a lock. Use with caution!"""
     with conn:    
+        conn.execute("BEGIN IMMEDIATE")  # Start a transaction to prevent race conditions
         cursor = conn.execute(
             "DELETE FROM locks WHERE project_id = ? AND resource_path = ? RETURNING *",
             (ref.project_id, ref.resource_path),
