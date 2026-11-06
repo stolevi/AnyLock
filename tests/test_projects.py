@@ -1,12 +1,13 @@
 import pytest
 
-from pipeline_lock.models import StorageType
+from pipeline_lock.models import ResourceRef, StorageType
 from pipeline_lock.permissions import NotAuthorizedError, add_admin
 from pipeline_lock.projects import (
     ProjectExistsError,
     ProjectNotFoundError,
     create_project,
     get_project_by_name,
+    register_resource,
 )
 
 
@@ -50,3 +51,38 @@ def test_get_project_by_name_ignores_case(conn):
 def test_get_project_by_name_missing_raises_error(conn):
     with pytest.raises(ProjectNotFoundError):
         get_project_by_name(conn, "Klonter")
+
+def test_register_resource_success(conn):
+    add_admin(conn, "Levi")
+    project = create_project(conn, "Klonter", StorageType.FILE_SYSTEM, "/klonter", "Levi")
+    ref = ResourceRef(project_id=project.project_id, resource_path="shots/SQ01_SH010")
+    assert register_resource(conn, ref) is True  # First registration should succeed
+    count = conn.execute("SELECT COUNT(*) FROM resources WHERE project_id = ? AND resource_path = ?", (project.project_id, ref.resource_path)).fetchone()[0]
+    assert count == 1  # Ensure the resource was registered in the database
+
+def test_register_resource_twice_false(conn):
+    add_admin(conn, "Levi")
+    project = create_project(conn, "Klonter", StorageType.FILE_SYSTEM, "/klonter", "Levi")
+    ref = ResourceRef(project_id=project.project_id, resource_path="shots/SQ01_SH010")
+    assert register_resource(conn, ref) is True  # First registration should succeed
+    assert register_resource(conn, ref) is False  # Second registration should return False
+    count = conn.execute("SELECT COUNT(*) FROM resources WHERE project_id = ? AND resource_path = ?", (project.project_id, ref.resource_path)).fetchone()[0]
+    assert count == 1  # Ensure only one entry exists in the database
+
+def test_register_resource_same_path_in_different_projects_returns_true(conn):
+    add_admin(conn, "Levi")
+    project1 = create_project(conn, "Klonter", StorageType.FILE_SYSTEM, "/klonter", "Levi")
+    project2 = create_project(conn, "Drijf", StorageType.FILE_SYSTEM, "/drijf", "Levi")
+    ref1 = ResourceRef(project_id=project1.project_id, resource_path="shots/SQ01_SH010")
+    ref2 = ResourceRef(project_id=project2.project_id, resource_path="shots/SQ01_SH010")
+    assert register_resource(conn, ref1) is True  # First registration should succeed
+    assert register_resource(conn, ref2) is True  # Registration in a different project should also succeed
+    count1 = conn.execute("SELECT COUNT(*) FROM resources WHERE project_id = ? AND resource_path = ?", (project1.project_id, ref1.resource_path)).fetchone()[0]
+    count2 = conn.execute("SELECT COUNT(*) FROM resources WHERE project_id = ? AND resource_path = ?", (project2.project_id, ref2.resource_path)).fetchone()[0]
+    assert count1 == 1  # Ensure the resource was registered in the first project
+    assert count2 == 1  # Ensure the resource was registered in the second project
+
+def test_register_resource_nonexistent_project_raises_error(conn):
+    ref = ResourceRef(project_id=9999, resource_path="shots/SQ01_SH010")  # Non-existent project ID
+    with pytest.raises(ProjectNotFoundError):
+        register_resource(conn, ref)

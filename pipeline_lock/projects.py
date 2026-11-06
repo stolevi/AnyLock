@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import UTC, datetime
 
-from pipeline_lock.models import Project, StorageType
+from pipeline_lock.models import Project, ResourceRef, StorageType
 from pipeline_lock.permissions import require_admin
 
 
@@ -9,7 +9,7 @@ class ProjectExistsError(Exception):
     """Raised when a project with that name already exists."""
 
 class ProjectNotFoundError(Exception):
-    """Raised when a project with that name does not exist."""
+    """Raised when a project doesn't exist."""
 
 def _row_to_project(row: sqlite3.Row) -> Project:
     """Convert a database row to a Project."""
@@ -49,3 +49,18 @@ def get_project_by_name(conn: sqlite3.Connection, project_name: str) -> Project:
     if row is None:
         raise ProjectNotFoundError(f"Project with name '{project_name}' does not exist.")
     return _row_to_project(row)
+
+def register_resource(conn: sqlite3.Connection, ref: ResourceRef) -> bool:
+    """Register a resource under a project. Returns True if the resource
+    was successfully registered, False if it already exists.
+    Raises ProjectNotFoundError if the project does not exist.
+    """
+    try:
+        with conn:
+            cursor = conn.execute(
+                "INSERT OR IGNORE INTO resources (project_id, resource_path) VALUES (?, ?)",
+                (ref.project_id, ref.resource_path),
+            )
+    except sqlite3.IntegrityError as e:
+        raise ProjectNotFoundError(f"Project with ID '{ref.project_id}' does not exist.") from e
+    return cursor.rowcount == 1
