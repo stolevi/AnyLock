@@ -7,6 +7,8 @@ from pipeline_lock.projects import (
     ProjectNotFoundError,
     create_project,
     get_project_by_name,
+    is_resource_registered,
+    list_resources_in_project,
     register_resource,
 )
 
@@ -86,3 +88,30 @@ def test_register_resource_nonexistent_project_raises_error(conn):
     ref = ResourceRef(project_id=9999, resource_path="shots/SQ01_SH010")  # Non-existent project ID
     with pytest.raises(ProjectNotFoundError):
         register_resource(conn, ref)
+
+def test_is_resource_registered_true_for_registered_resource(conn, ref):
+    assert is_resource_registered(conn, ref) is True  # the ref fixture already registered it
+
+def test_is_resource_registered_false_for_unregistered_resource(conn, project):
+    unregistered = ResourceRef(project_id=project.project_id, resource_path="shots/SQ09_SH090")
+    assert is_resource_registered(conn, unregistered) is False
+
+def test_is_resource_registered_false_in_different_project(conn, ref):
+    other = create_project(conn, "Drijf", StorageType.FILE_SYSTEM, "/drijf", "Levi")
+    same_path_elsewhere = ResourceRef(project_id=other.project_id, resource_path=ref.resource_path)
+    assert is_resource_registered(conn, same_path_elsewhere) is False  # never registered in Drijf
+
+def test_list_resources_in_project_only_this_project_sorted(conn, project):
+    register_resource(conn, ResourceRef(project_id=project.project_id, resource_path="shots/SQ03_SH030"))
+    register_resource(conn, ResourceRef(project_id=project.project_id, resource_path="shots/SQ01_SH010"))
+    register_resource(conn, ResourceRef(project_id=project.project_id, resource_path="shots/SQ02_SH020"))
+    other = create_project(conn, "Drijf", StorageType.FILE_SYSTEM, "/drijf", "Levi")
+    register_resource(conn, ResourceRef(project_id=other.project_id, resource_path="shots/SQ00_DECOY"))
+    assert list_resources_in_project(conn, project.project_id) == [
+        "shots/SQ01_SH010",
+        "shots/SQ02_SH020",
+        "shots/SQ03_SH030",
+    ]
+
+def test_list_resources_in_project_empty_project(conn, project):
+    assert list_resources_in_project(conn, project.project_id) == []

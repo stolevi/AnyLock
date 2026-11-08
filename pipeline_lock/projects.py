@@ -64,3 +64,18 @@ def register_resource(conn: sqlite3.Connection, ref: ResourceRef) -> bool:
     except sqlite3.IntegrityError as e:
         raise ProjectNotFoundError(f"Project with ID '{ref.project_id}' does not exist.") from e
     return cursor.rowcount == 1
+
+def is_resource_registered(conn: sqlite3.Connection, ref: ResourceRef) -> bool:
+    """Return True if the resource is registered under the project."""
+    row = conn.execute(
+        "SELECT 1 FROM resources WHERE project_id = ? AND resource_path = ?", (ref.project_id, ref.resource_path)
+    ).fetchone()
+    return row is not None
+
+def list_resources_in_project(conn: sqlite3.Connection, project_id: int) -> list[str]:
+    """Return the resource paths for all resources registered 
+    on a project, ascending."""
+    rows = conn.execute(
+        "SELECT resource_path FROM resources WHERE project_id = ? ORDER BY resource_path ASC", (project_id,)
+    ).fetchall()
+    return [row["resource_path"] for row in rows]
