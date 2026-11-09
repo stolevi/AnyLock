@@ -20,7 +20,7 @@ def test_two_people_cannot_both_acquire(tmp_path, monkeypatch):
     add_admin(levi, "Levi")
     project = create_project(levi, "Klonter", StorageType.FILE_SYSTEM, "/klonter", "Levi")
     ref = ResourceRef(project_id=project.project_id, resource_path="shots/SQ01_SH070")
-    register_resource(levi, ref)
+    register_resource(levi, ref, "Levi")
 
     winners = []
     original_write = locks._write_lock

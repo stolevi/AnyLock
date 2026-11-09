@@ -28,7 +28,7 @@ from pipeline_lock.projects import (
 def _register(conn, project_id: int, resource_path: str) -> ResourceRef:
     """Build a ResourceRef in an existing project and register it, so it can be locked."""
     ref = ResourceRef(project_id=project_id, resource_path=resource_path)
-    register_resource(conn, ref)
+    register_resource(conn, ref, "Levi")
     return ref
 
 
@@ -296,3 +296,12 @@ def test_acquire_with_registration_passes_duration(conn, ref):
     lock = acquire_with_registration(conn, adapter, ref, "Levi", duration=timedelta(hours=2))
     # Not the default 8 hours: a small window around 2 hours from now.
     assert now + timedelta(hours=1, minutes=59) < lock.expires_at < now + timedelta(hours=2, minutes=1)
+
+def test_acquire_with_registration_records_the_locker_as_registrant(conn, project):
+    ref = ResourceRef(project.project_id, "shots/SQ05_SH050")
+    acquire_with_registration(conn, MockAdapter({ref.resource_path}), ref, "Sarah")
+    registered_by = conn.execute(
+        "SELECT registered_by FROM resources WHERE project_id = ? AND resource_path = ?",
+        (ref.project_id, ref.resource_path),
+    ).fetchone()[0]
+    assert registered_by == "Sarah"

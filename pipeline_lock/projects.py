@@ -42,7 +42,8 @@ def create_project(conn: sqlite3.Connection, project_name: str, storage_type: St
         return _row_to_project(row)
 
 def get_project_by_name(conn: sqlite3.Connection, project_name: str) -> Project:
-    """Retrieve a project by its name. Raises ProjectNotFoundError if the project does not exist."""
+    """Retrieve a project by its name. Raises ProjectNotFoundError if 
+    the project does not exist."""
     row = conn.execute(
         "SELECT * FROM projects WHERE project_name = ?", (project_name,)
     ).fetchone()
@@ -50,18 +51,23 @@ def get_project_by_name(conn: sqlite3.Connection, project_name: str) -> Project:
         raise ProjectNotFoundError(f"Project with name '{project_name}' does not exist.")
     return _row_to_project(row)
 
-def register_resource(conn: sqlite3.Connection, ref: ResourceRef) -> bool:
+def register_resource(conn: sqlite3.Connection, ref: ResourceRef, registered_by: str) -> bool:
     """Register a resource under a project. Returns True if the resource
-    was successfully registered, False if it already exists.
+    was successfully registered, False if it already exists. The first 
+    registration wins: a repeat doesn't change who added it or when.
     Raises ProjectNotFoundError if the project does not exist.
     """
+    now = datetime.now(UTC)
     try:
         with conn:
             cursor = conn.execute(
-                "INSERT OR IGNORE INTO resources (project_id, resource_path) VALUES (?, ?)",
-                (ref.project_id, ref.resource_path),
+                """INSERT INTO resources (project_id, resource_path, registered_at, registered_by) VALUES (?, ?, ?, ?)
+                ON CONFLICT (project_id, resource_path) DO NOTHING""",
+                (ref.project_id, ref.resource_path, now.isoformat(), registered_by)
             )
     except sqlite3.IntegrityError as e:
+        if e.sqlite_errorname != "SQLITE_CONSTRAINT_FOREIGNKEY":    
+            raise # some other rule was broken: let it surface as it is
         raise ProjectNotFoundError(f"Project with ID '{ref.project_id}' does not exist.") from e
     return cursor.rowcount == 1
 

@@ -29,7 +29,7 @@ if __name__ == "__main__":
         add_admin(setup, "Levi")
         project = create_project(setup, "Klonter", StorageType.FILE_SYSTEM, "/klonter", "Levi")
         ref = ResourceRef(project_id=project.project_id, resource_path="shots/SQ01_SH070")
-        register_resource(setup, ref)
+        register_resource(setup, ref, "Levi")
         setup.close()
         b = mp.Barrier(n); q = mp.Queue() # type: ignore[var-annotated]
         ps = [mp.Process(target=worker, args=(db, ref, f"artist{i}", b, q)) for i in range(n)]

@@ -1,3 +1,6 @@
+import sqlite3
+from datetime import UTC, datetime
+
 import pytest
 
 from pipeline_lock.models import ResourceRef, StorageType
@@ -11,6 +14,15 @@ from pipeline_lock.projects import (
     list_resources_in_project,
     register_resource,
 )
+
+
+def _registration(conn, ref):
+    """Return (registered_at, registered_by) for a registered resource."""
+    row = conn.execute(
+        "SELECT registered_at, registered_by FROM resources WHERE project_id = ? AND resource_path = ?",
+        (ref.project_id, ref.resource_path),
+    ).fetchone()
+    return datetime.fromisoformat(row["registered_at"]), row["registered_by"]
 
 # --- create_project ---
 
@@ -65,7 +77,7 @@ def test_register_resource_success(conn):
     add_admin(conn, "Levi")
     project = create_project(conn, "Klonter", StorageType.FILE_SYSTEM, "/klonter", "Levi")
     ref = ResourceRef(project_id=project.project_id, resource_path="shots/SQ01_SH010")
-    assert register_resource(conn, ref) is True  # First registration should succeed
+    assert register_resource(conn, ref, "Levi") is True  # First registration should succeed
     count = conn.execute("SELECT COUNT(*) FROM resources WHERE project_id = ? AND resource_path = ?", (project.project_id, ref.resource_path)).fetchone()[0]
     assert count == 1  # Ensure the resource was registered in the database
 
@@ -73,8 +85,8 @@ def test_register_resource_twice_false(conn):
     add_admin(conn, "Levi")
     project = create_project(conn, "Klonter", StorageType.FILE_SYSTEM, "/klonter", "Levi")
     ref = ResourceRef(project_id=project.project_id, resource_path="shots/SQ01_SH010")
-    assert register_resource(conn, ref) is True  # First registration should succeed
-    assert register_resource(conn, ref) is False  # Second registration should return False
+    assert register_resource(conn, ref, "Levi") is True  # First registration should succeed
+    assert register_resource(conn, ref, "Levi") is False  # Second registration should return False
     count = conn.execute("SELECT COUNT(*) FROM resources WHERE project_id = ? AND resource_path = ?", (project.project_id, ref.resource_path)).fetchone()[0]
     assert count == 1  # Ensure only one entry exists in the database
 
@@ -84,8 +96,8 @@ def test_register_resource_same_path_in_different_projects_returns_true(conn):
     project2 = create_project(conn, "Drijf", StorageType.FILE_SYSTEM, "/drijf", "Levi")
     ref1 = ResourceRef(project_id=project1.project_id, resource_path="shots/SQ01_SH010")
     ref2 = ResourceRef(project_id=project2.project_id, resource_path="shots/SQ01_SH010")
-    assert register_resource(conn, ref1) is True  # First registration should succeed
-    assert register_resource(conn, ref2) is True  # Registration in a different project should also succeed
+    assert register_resource(conn, ref1, "Levi") is True  # First registration should succeed
+    assert register_resource(conn, ref2, "Levi") is True  # Registration in a different project should also succeed
     count1 = conn.execute("SELECT COUNT(*) FROM resources WHERE project_id = ? AND resource_path = ?", (project1.project_id, ref1.resource_path)).fetchone()[0]
     count2 = conn.execute("SELECT COUNT(*) FROM resources WHERE project_id = ? AND resource_path = ?", (project2.project_id, ref2.resource_path)).fetchone()[0]
     assert count1 == 1  # Ensure the resource was registered in the first project
@@ -94,7 +106,28 @@ def test_register_resource_same_path_in_different_projects_returns_true(conn):
 def test_register_resource_nonexistent_project_raises_error(conn):
     ref = ResourceRef(project_id=9999, resource_path="shots/SQ01_SH010")  # Non-existent project ID
     with pytest.raises(ProjectNotFoundError):
-        register_resource(conn, ref)
+        register_resource(conn, ref, "Levi")
+
+def test_register_resource_records_who_and_when(conn, project):
+    ref = ResourceRef(project.project_id, "shots/SQ05_SH050")
+    before = datetime.now(UTC)
+    register_resource(conn, ref, "Levi")
+    after = datetime.now(UTC)
+    registered_at, registered_by = _registration(conn, ref)
+    assert registered_by == "Levi"
+    assert before <= registered_at <= after
+
+def test_register_resource_first_registration_wins(conn, project):
+    ref = ResourceRef(project.project_id, "shots/SQ05_SH050")
+    register_resource(conn, ref, "Levi")
+    first = _registration(conn, ref)
+    assert register_resource(conn, ref, "Sarah") is False
+    assert _registration(conn, ref) == first  # still Levi, still the original time
+
+def test_register_resource_without_a_name_raises(conn, project):
+    ref = ResourceRef(project.project_id, "shots/SQ05_SH050")
+    with pytest.raises(sqlite3.IntegrityError):
+        register_resource(conn, ref, None)
 
 
 # --- is_resource_registered ---
@@ -115,11 +148,11 @@ def test_is_resource_registered_false_in_different_project(conn, ref):
 # --- list_resources_in_project ---
 
 def test_list_resources_in_project_only_this_project_sorted(conn, project):
-    register_resource(conn, ResourceRef(project_id=project.project_id, resource_path="shots/SQ03_SH030"))
-    register_resource(conn, ResourceRef(project_id=project.project_id, resource_path="shots/SQ01_SH010"))
-    register_resource(conn, ResourceRef(project_id=project.project_id, resource_path="shots/SQ02_SH020"))
+    register_resource(conn, ResourceRef(project_id=project.project_id, resource_path="shots/SQ03_SH030"), "Levi")
+    register_resource(conn, ResourceRef(project_id=project.project_id, resource_path="shots/SQ01_SH010"), "Levi")
+    register_resource(conn, ResourceRef(project_id=project.project_id, resource_path="shots/SQ02_SH020"), "Levi")
     other = create_project(conn, "Drijf", StorageType.FILE_SYSTEM, "/drijf", "Levi")
-    register_resource(conn, ResourceRef(project_id=other.project_id, resource_path="shots/SQ00_DECOY"))
+    register_resource(conn, ResourceRef(project_id=other.project_id, resource_path="shots/SQ00_DECOY"), "Levi")
     assert list_resources_in_project(conn, project.project_id) == [
         "shots/SQ01_SH010",
         "shots/SQ02_SH020",

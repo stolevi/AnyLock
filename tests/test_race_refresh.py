@@ -20,7 +20,7 @@ def test_refresh_cannot_resurrect_a_force_released_lock(tmp_path, monkeypatch):
     add_admin(levi, "Admin")
     project = create_project(levi, "Klonter", StorageType.FILE_SYSTEM, "/klonter", "Admin")
     ref = ResourceRef(project_id=project.project_id, resource_path="shots/SQ01_SH070")
-    register_resource(levi, ref)
+    register_resource(levi, ref, "Admin")
     locks.acquire_lock(levi, ref, "Levi")
 
     force_released = []

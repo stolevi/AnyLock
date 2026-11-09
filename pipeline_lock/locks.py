@@ -140,7 +140,7 @@ def acquire_with_registration(conn: sqlite3.Connection, adapter: PipelineAdapter
             known = list_resources_in_project(conn, ref.project_id)
             suggestions = get_close_matches(ref.resource_path, known, n=3)
             raise ResourceNotFoundError(ref.resource_path, suggestions)
-        register_resource(conn, ref)
+        register_resource(conn, ref, owner)
     return acquire_lock(conn, ref, owner, duration)
 
 def refresh_lock(conn: sqlite3.Connection, ref: ResourceRef, owner: str, duration: timedelta | None = None) -> Lock:

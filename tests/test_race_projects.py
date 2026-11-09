@@ -57,7 +57,7 @@ def test_only_one_concurrent_register_resource_wins(tmp_path):
         conn = get_connection(db_path)
         try:
             barrier.wait()
-            results.append(register_resource(conn, ref))
+            results.append(register_resource(conn, ref, "Ann"))
         finally:
             conn.close()
 

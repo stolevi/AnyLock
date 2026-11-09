@@ -23,5 +23,5 @@ def project(conn):
 def ref(conn, project):
     """Provide a sample resource reference for tests."""
     ref = ResourceRef(project_id=project.project_id, resource_path="shots/SQ01_SH010")
-    register_resource(conn, ref)
+    register_resource(conn, ref, "Levi")
     return ref

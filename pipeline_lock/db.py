@@ -55,6 +55,8 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS resources (
             project_id INTEGER NOT NULL,
             resource_path TEXT NOT NULL,
+            registered_at TEXT NOT NULL,
+            registered_by TEXT NOT NULL,
             PRIMARY KEY (project_id, resource_path),
             FOREIGN KEY (project_id) REFERENCES projects (project_id) ON DELETE CASCADE
         )
