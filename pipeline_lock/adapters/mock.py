@@ -7,3 +7,6 @@ class MockAdapter(PipelineAdapter):
 
     def resource_exists(self, resource_path: str) -> bool:
         return resource_path in self.known_resources
+
+    def list_resources(self) -> list[str]:
+        return sorted(self.known_resources)

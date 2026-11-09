@@ -9,38 +9,23 @@ class StorageType(Enum):
     GOOGLE_DRIVE = "google_drive"
 
 @dataclass
-class StorageConfig:
-    pass
-
-@dataclass
-class FileSystemConfig(StorageConfig):
-    root_path: str
-
-@dataclass
-class DropboxConfig(StorageConfig):
-    access_token: str
-    folder_path: str
-
-@dataclass
-class GoogleDriveConfig(StorageConfig):
-    credentials_json: str
-    folder_id: str
-
-@dataclass
 class Project:
     project_id: int
     project_name: str
     storage_type: StorageType
-    config: StorageConfig
-    resources: list[str]
-    personnel: list[str]
-    supervisors: list[str]
+    root: str
+    enforcement_enabled: bool
     created_at: datetime
     updated_at: datetime
-    enforcement_enabled: bool
+
+@dataclass(frozen=True)
+class ResourceRef:
+    project_id: int
+    resource_path: str
 
 @dataclass
 class Lock:
+    project_id: int
     resource_path: str
     owner: str
     acquired_at: datetime
@@ -53,9 +38,9 @@ class Lock:
 @dataclass
 class LockEvent:
     event_id: int
+    project_id: int
     resource_path: str
     owner: str
     event_type: str
     timestamp: datetime
-
     

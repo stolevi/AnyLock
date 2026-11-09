@@ -1,6 +1,6 @@
 # AnyLock
 
-*A lightweight, tool-agnostic advisory file-locking service for creative production pipelines — currently a command-line tool, with a web GUI planned (see Roadmap).*
+*A lightweight, tool-agnostic advisory file-locking service for creative production pipelines — currently a command-line tool, with a central service and web GUI planned (see Roadmap).*
 
 AnyLock lets teams working from a shared pool of production files claim
 exclusive ownership of a resource before editing it, so two people never
@@ -16,21 +16,41 @@ files can't be merged like text or code.
 
 ### Core functions
 
-* acquire: acquire a lock on a resource with your name or user_id. Locks expire automatically after a default duration of 8 hours, or a custom duration you specify, so a forgotten lock can't block a resource indefinitely.
+* acquire: acquire a lock on a resource in a project with your name. Locks expire automatically after a default duration of 8 hours, or a custom duration you specify, so a forgotten lock can't block a resource indefinitely. The first time a resource is locked, AnyLock checks that it really exists in storage and registers it; a typo is refused with a "Did you mean ...?" suggestion instead of silently creating a lock on a file that doesn't exist.
 
-* refresh: refresh an existing lock as its owner — extends the expiry for a default duration of 8 hours, or a custom duration you specify, without needing to release and re-acquire.
+* refresh: refresh an existing lock as its owner — sets the expiry to a default duration of 8 hours from now, or a custom duration you specify, without needing to release and re-acquire.
 
 * release: release a lock as owner of that lock.
 
-* force-release: force-release a lock as supervisor.
+* force-release: force-release any lock as an admin.
+
+* status and show-locks: check who holds a resource, or list every active lock in a project.
+
+### Projects
+
+Every lock belongs to a project, so one AnyLock database can serve several productions at once. Two projects can each have a resource called `SQ01_SH070` without ever blocking each other. Projects are created by admins and named on every command with `--project`.
+
+### Race-safe by design
+
+Every function that writes runs its checks and its write inside a single `BEGIN IMMEDIATE` transaction, so two people pressing "acquire" at the same moment can never both be told they own the lock. This is covered by dedicated race tests (threads released at the same instant by a barrier, and interleaving tests that slip a second user in between the check and the write), plus a multi-process stress script.
+
+### Script-friendly
+
+Errors exit with code 1 and are written to stderr; successes and informational messages exit with 0. A pipeline script can rely on that:
+
+```bash
+python cli.py acquire SQ01_SH070 --project Klonter --owner render_farm && render SQ01_SH070
+```
+
+If someone else holds the lock, the acquire fails and the render never starts.
 
 ### Lock event history
 
-A database holding lock history throughout production.
+A database table holding the lock history of every resource throughout production.
 
 ### Adapter
 
-Tool-agnostic adapter interface — designed to plug into any production tool; a TVPaint integration is planned (see Roadmap).
+Tool-agnostic adapter interface — designed to plug into any production tool or storage backend; a TVPaint integration is planned (see Roadmap).
 
 ### Animations and colored feedback
 
@@ -40,7 +60,7 @@ Small bespoke animations at successful acquire, refresh, release and force-relea
 
 ## Installation
 
-* requires Python 3.10 or later
+* requires Python 3.11 or later
 ```bash
 python3 --version
 ```
@@ -83,13 +103,53 @@ Dev:
 pip install -r requirements-dev.txt
 ```
 
+* run the tests (dev)
+```bash
+pytest -q
+```
+
+### Choosing the database
+
+By default AnyLock stores its data in `pipeline_lock.db` in the project folder. Set the `ANYLOCK_DB` environment variable to use a different file:
+
+Mac/Linux, for one command:
+```bash
+ANYLOCK_DB=/tmp/anylock_try.db python cli.py show-locks --project Klonter
+```
+PowerShell, for the rest of the session:
+```powershell
+$env:ANYLOCK_DB = "C:\temp\anylock_try.db"
+```
+
 ## Usage
 
-*See all the features, including the animations and color coded printed messages, in the command line. This walkthrough assumes a fresh database with no existing locks or supervisors.*
+*See all the features, including the animations and color coded printed messages, in the command line. This walkthrough assumes a fresh database with no existing admins, projects or locks.*
+
+*Until a real storage adapter exists, the CLI checks resources against a fixed stand-in set: `SQ01_SH070`, `SQ04_SH050` and `SQ06_SH030`.*
 
 * get program title
 ```bash
 python cli.py
+```
+
+* list all commands, or the options of one command
+```bash
+python cli.py --help
+python cli.py acquire --help
+```
+
+### Set up an admin and a project
+
+* The very first admin can add themselves; after that, only existing admins can add new ones.
+
+```bash
+python cli.py add-admin Levi --initiated-by Levi
+```
+
+* Only admins can create projects. `--storage` is one of `file_system`, `dropbox` or `google_drive`; `--root` is where the project's files live.
+
+```bash
+python cli.py create-project Klonter --storage file_system --root /klonter --created-by Levi
 ```
 
 ### Acquire
@@ -97,23 +157,54 @@ python cli.py
 * Claim an exclusive lock on a resource.
 
 ```bash
-python cli.py acquire SQ01_SH070 --owner Levi
+python cli.py acquire SQ01_SH070 --project Klonter --owner Levi
 ```
 
 Animation: `[ ]` → `[ - ]` → `[==]`
 
+* A resource that doesn't exist is refused (red), with a suggestion (blue) when there's a close match among the project's registered resources:
+
+```bash
+python cli.py acquire SQ01_SH07O --project Klonter --owner Levi
+```
+
+```
+SQ01_SH07O doesn't exist in project 'Klonter'.
+Did you mean: SQ01_SH070?
+```
+
+* A custom duration is a number followed by `m` (minutes), `h` (hours) or `d` (days):
+
+```bash
+python cli.py acquire SQ06_SH030 --project Klonter --owner Levi --duration 30m
+```
+
 * Trying to acquire a resource someone else already holds raises a conflict (red):
 
 ```bash
-python cli.py acquire SQ01_SH070 --owner Sarah
+python cli.py acquire SQ01_SH070 --project Klonter --owner Sarah
+```
+
+### Status and show-locks
+
+* Check who holds a resource:
+
+```bash
+python cli.py status SQ01_SH070 --project Klonter
+```
+
+* List every active lock in a project:
+
+```bash
+python cli.py show-locks --project Klonter
 ```
 
 ### Refresh
 
-* Extend the lease of a lock you currently own.
+* Reset the expiry of a lock you currently own. The new expiry counts from now, so a shorter duration can also shorten a lock.
 
 ```bash
-python cli.py refresh SQ01_SH070 --owner Levi
+python cli.py refresh SQ01_SH070 --project Klonter --owner Levi --duration 2h
 ```
 
 Animation: `[--]` → `[**]` → `[==]`
@@ -121,8 +212,8 @@ Animation: `[--]` → `[**]` → `[==]`
 * Refreshing a lock owned by someone else, or a resource that isn't locked at all, both raise an error (red):
 
 ```bash
-python cli.py refresh SQ01_SH070 --owner Sarah
-python cli.py refresh SQ04_SH050 --owner Levi
+python cli.py refresh SQ01_SH070 --project Klonter --owner Sarah
+python cli.py refresh SQ04_SH050 --project Klonter --owner Levi
 ```
 
 ### Release
@@ -132,13 +223,13 @@ python cli.py refresh SQ04_SH050 --owner Levi
 * A release attempt by someone who isn't the owner raises an error (red):
 
 ```bash
-python cli.py release SQ01_SH070 --owner Sarah
+python cli.py release SQ01_SH070 --project Klonter --owner Sarah
 ```
 
 * The actual owner releasing it succeeds:
 
 ```bash
-python cli.py release SQ01_SH070 --owner Levi
+python cli.py release SQ01_SH070 --project Klonter --owner Levi
 ```
 
 Animation: `[==]` → `[ * ]` → `[*]` → `[ ]`
@@ -146,28 +237,27 @@ Animation: `[==]` → `[ * ]` → `[*]` → `[ ]`
 * Releasing it again is a harmless no-op (blue), since there's nothing left to release:
 
 ```bash
-python cli.py release SQ01_SH070 --owner Levi
+python cli.py release SQ01_SH070 --project Klonter --owner Levi
 ```
 
 ### Force-release
 
-* Supervisors can forcefully release any lock, regardless of who owns it.
+* Admins can forcefully release any lock, regardless of who owns it.
 
 ```bash
-python cli.py add-supervisor Levi
-python cli.py acquire SQ01_SH070 --owner Sarah
+python cli.py acquire SQ04_SH050 --project Klonter --owner Sarah
 ```
 
-* A force-release attempt by someone who isn't a supervisor is blocked (red):
+* A force-release attempt by someone who isn't an admin is blocked (red):
 
 ```bash
-python cli.py force-release SQ01_SH070 --forced-by Sarah
+python cli.py force-release SQ04_SH050 --project Klonter --forced-by Sarah
 ```
 
-* A supervisor can force-release it successfully:
+* An admin can force-release it successfully; the message says who held it before:
 
 ```bash
-python cli.py force-release SQ01_SH070 --forced-by Levi
+python cli.py force-release SQ04_SH050 --project Klonter --forced-by Levi
 ```
 
 Animation: `[==]` → `[=|=]` → `[ / ]` → `[ ]`
@@ -175,12 +265,30 @@ Animation: `[==]` → `[=|=]` → `[ / ]` → `[ ]`
 * Force-releasing it again is a harmless no-op (blue):
 
 ```bash
-python cli.py force-release SQ01_SH070 --forced-by Levi
+python cli.py force-release SQ04_SH050 --project Klonter --forced-by Levi
+```
+
+### Admins
+
+* Admins can add and remove other admins:
+
+```bash
+python cli.py add-admin Sarah --initiated-by Levi
+python cli.py remove-admin Sarah --initiated-by Levi
 ```
 
 ## Architecture
 
-AnyLock stores its data in a single SQLite database with two key tables that serve different purposes. The `locks` table holds only *current* state — one row per resource, overwritten in place every time a lock changes hands. The `lock_history` table is append-only: every acquire, refresh, release, and force-release gets its own permanent row, so nothing is ever overwritten or deleted. This event-log design means the full history of who did what to a resource, and when, is always reconstructable — useful for accountability on a shared production, and a deliberate choice over trying to derive history from `locks` alone.
+AnyLock stores its data in a single SQLite database (schema version 1, stamped with `PRAGMA user_version`). Foreign keys are switched on for every connection, so the database itself refuses data that doesn't fit together — a lock on a resource that was never registered, or a resource in a project that doesn't exist.
+
+The tables, by purpose:
+
+* `projects`, `project_members` — productions, and who works on them in which role (`personnel` or `supervisor`).
+* `resources` — every file AnyLock has seen in a project, with who registered it and when. A resource is identified by its project and its path: `(project_id, resource_path)`.
+* `locks` — only *current* state: one row per locked resource, overwritten in place every time a lock changes hands.
+* `lock_history` — append-only: every acquire, refresh, release, and force-release gets its own permanent row, so nothing is ever overwritten or deleted. The full history of who did what to a resource, and when, is always reconstructable — useful for accountability on a shared production, and a deliberate choice over trying to derive history from `locks` alone.
+* `admins` — the global admin tier.
+* `global_switch_state`, `global_switch_history`, `global_switch_reasons` — the global kill switch (see below): a single row of current state, plus an event log and reasons attached to it.
 
 ### Locking model
 
@@ -190,43 +298,59 @@ Real enforcement turns out not to need one universal mechanism — it needs a di
 
 ### Adapter pattern
 
-Resource validation goes through a `PipelineAdapter` interface rather than being hardcoded to any one tool. `MockAdapter`, used throughout development and in the Usage examples above, checks resource IDs against a fixed in-memory set — currently still a real dependency of the CLI itself, not just a testing stand-in, until a concrete backend adapter replaces it. A real adapter can be swapped in without changing any of AnyLock's core logic, since `core.py` and `cli.py` only ever depend on the adapter interface, never a specific implementation.
+Resource validation goes through a `PipelineAdapter` interface rather than being hardcoded to any one tool. It currently has two methods: `resource_exists()` and `list_resources()`. `MockAdapter`, used throughout development and in the Usage examples above, checks resource paths against a fixed in-memory set — currently still a real dependency of the CLI itself, not just a testing stand-in, until a concrete backend adapter replaces it. A real adapter can be swapped in without changing any of AnyLock's core logic, since `locks.py` only ever depends on the adapter interface, never a specific implementation.
 
-The interface itself is planned to grow beyond existence-checking: `lock_resource()`/`unlock_resource()` methods will let each concrete adapter actually carry out the enforcement described above, with a `LocalFilesystemAdapter`, `DropboxAdapter`, and `GoogleDriveAdapter` each implementing the same interface against a different backend. Which adapter a given project would use is planned to be chosen through an `ADAPTER_MAP`, keyed by that project's storage type (see Projects & multi-backend support below) — none of this exists yet; today there's only `resource_exists()` and `MockAdapter`.
+The interface itself is planned to grow beyond existence-checking: `lock_resource()`/`unlock_resource()` methods will let each concrete adapter actually carry out the enforcement described above, with a `LocalFilesystemAdapter`, `DropboxAdapter`, and `GoogleDriveAdapter` each implementing the same interface against a different backend. Which adapter a given project uses is planned to be chosen through an `ADAPTER_MAP`, keyed by that project's storage type — none of this exists yet.
 
-### Projects & multi-backend support
+### Projects and resource registration
 
-A `Project` is the planned unit that would tie a set of resources, collaborators, and supervisors to one storage backend and its configuration (a local root path, a Dropbox access token and folder, or Google Drive credentials and a folder ID — one `StorageConfig` subclass per `StorageType`). The dataclasses for this already exist in `models.py`, but nothing yet reads or writes them — `core.py` and `cli.py` have no notion of a `Project` today. Once wired in, this is what would let AnyLock manage more than one show/production at a time, each on its own storage backend, rather than assuming a single global setup.
+A `Project` ties a set of resources and collaborators to one storage backend (`storage_type`) and a location in it (`root`). Project names are unique regardless of capitalisation, so `Klonter` and `klonter` can't both exist.
 
-Resource identity is planned to be path-based once projects exist — a resource's ID would simply be its path relative to the project directory, with a mid-production rename or move not auto-detected: the old lock on the old path would just go stale, and reconnecting a renamed file to its lock history would be a deliberate, explicit action rather than something AnyLock guesses at silently. None of this is built yet: the code already calls this value `resource_path`, but today it is just a plain string (such as `SQ01_SH070`) checked against `MockAdapter`'s fixed set, with no project directory behind it.
+Resources are identified by their path relative to the project root. They don't have to be entered by hand: the first time anyone acquires a resource, AnyLock asks the project's adapter whether the file really exists, registers it, and then locks it — all as one step (`acquire_with_registration`). Later acquires skip the storage check. A mid-production rename or move is not auto-detected: the old lock on the old path just goes stale, and reconnecting a renamed file to its lock history is meant to be a deliberate, explicit action rather than something AnyLock guesses at silently.
+
+Storage credentials (Dropbox tokens, Google Drive credentials) are deliberately *not* stored in the database. They belong on the planned central server, not in a file that every client can read.
+
+### Permissions
+
+Two tiers:
+
+* **Admins** — a global tier. They create projects, add and remove other admins, force-release any lock, and will be the only ones who can touch the global kill switch. The very first admin can add themselves (bootstrap); after that, only an admin can add another.
+* **Project supervisors** — a per-project role in `project_members`. Planned: force-releasing locks and pausing enforcement within their own project only.
+
+Names are plain strings for now; real logins and user IDs are planned for the central service.
 
 ### Kill switches
 
 Enforcement, once built, can be paused at two independent levels — a resource is only actually enforced when both agree it should be:
 
-* **Per-project** — each `Project` carries its own `enforcement_enabled` flag. A project's supervisor can pause enforcement for their own project without affecting any other project AnyLock manages. Routine, no audit trail.
+* **Per-project** — each project carries its own `enforcement_enabled` flag. A project's supervisor can pause enforcement for their own project without affecting any other project AnyLock manages. Routine, no audit trail.
 * **Global** — a single, system-wide switch, separate from any one project, for the rare "something is wrong, unblock everyone right now" case. Flipping it off unwinds enforcement across every project at once. Because this is meant to be disruptive and rare, every toggle is logged (who, when, new state) with an optional reason that can be attached at the time or added later by referencing that toggle's event ID — mirroring how `lock_history` already separates current state from a permanent event log.
 
-Only a **super-supervisor** — AnyLock's existing, global `supervisors` tier — can touch the global switch; an ordinary, per-project supervisor can only pause enforcement for the project they're responsible for.
+The tables for both switches exist; the commands to flip them are still to come.
 
 ### Module breakdown
 
-* `models.py` — the `Lock` and `LockEvent` dataclasses, plus `Project`, `StorageType`, and the `StorageConfig` family (`FileSystemConfig`, `DropboxConfig`, `GoogleDriveConfig`) that back the planned multi-backend support above.
-* `db.py` — database connection and schema (`locks`, `lock_history`, `supervisors`), plus `open_and_close_connection`, a context manager guaranteeing a connection is closed after use.
-* `core.py` — the actual locking logic: acquiring, refreshing, releasing, and force-releasing, plus the custom exceptions (`LockConflictError`, `LockNotOwnedError`, `ResourceNotLockedError`) that signal each failure case. Pure logic, with no knowledge of the terminal, colors, or animations.
-* `permissions.py` — supervisor registration and authorization checks (`is_supervisor`, `require_supervisor`), including the bootstrap logic that lets the very first supervisor be added without prior authorization (`add_supervisor_with_bootstrap`, `remove_supervisor_with_lock`), raising `NotAuthorizedError` when appropriate.
-* `cli.py` — the command-line interface itself: argument parsing, colored output, and animations, built on top of `core.py` and `permissions.py`.
-* `adapters/` — the `PipelineAdapter` interface and its implementations; currently just `resource_exists()` and `MockAdapter`, with the enforcement methods and concrete backend adapters described above still to come.
+* `models.py` — lean dataclasses that mirror table rows (`Project`, `Lock`, `LockEvent`), the `StorageType` enum, and `ResourceRef`: a small frozen dataclass (`project_id`, `resource_path`) that names a resource in a project, passed to every lock function.
+* `db.py` — the database connection (`get_connection`, and `open_and_close_connection`, a context manager guaranteeing a connection is closed after use), the choice of database file (`ANYLOCK_DB`), and the schema.
+* `locks.py` — the actual locking logic: acquiring (with or without registration), refreshing, releasing, force-releasing, status, active locks and history, plus the custom exceptions (`LockConflictError`, `LockNotOwnedError`, `ResourceNotLockedError`, `ResourceNotFoundError`) that signal each failure case. Pure logic, with no knowledge of the terminal, colors, or animations.
+* `projects.py` — creating and looking up projects, and registering resources (`ProjectExistsError`, `ProjectNotFoundError`).
+* `permissions.py` — admin registration and authorization checks (`is_admin`, `require_admin`), including the bootstrap logic that lets the very first admin be added without prior authorization (`add_admin_with_bootstrap`, `remove_admin_with_lock`), raising `NotAuthorizedError` when appropriate.
+* `cli.py` — the command-line interface itself: argument parsing, colored output, animations and exit codes, built on top of the modules above.
+* `adapters/` — the `PipelineAdapter` interface (`base.py`) and `MockAdapter` (`mock.py`), with the enforcement methods and concrete backend adapters described above still to come.
 
 ### Testing
 
-The project is covered by a pytest suite (`tests/`) exercising the core locking logic, the adapter interface, and the permissions system, run with `pytest -v` as shown in the Installation section. The CLI layer (`cli.py`) itself currently has no automated coverage — see Roadmap.
+The project is covered by a pytest suite (`tests/`), run with `pytest -q`:
+
+* **Unit tests** for the locking logic, projects and resource registration, permissions, the adapter interface and database selection — including tests with "decoy" data (a second project with the same resource path) that would catch a query forgetting to filter by project.
+* **CLI tests** (`test_cli.py`) that run every command through Click's `CliRunner` against a temporary database, checking both the messages and the exit codes.
+* **Race tests** (`test_race_*.py`) for acquiring, refreshing, creating projects, registering resources and adding admins: several threads released at the same instant, or a second user slipped in between a check and a write. Some of these were written to fail first, and a fix was only accepted once they passed.
+* **Stress script** (`tests/stress_acquire.py`) — run by hand; many processes race for the same lock over many rounds and report whether more than one was ever told it won.
 
 ## Roadmap
 
 * **TVPaint plugin** — the big one. If TVPaint's scripting environment lets a plugin query and react to lock state in real time, this closes the gap between "advisory" and genuinely enforced locking for the one tool AnyLock was built around.
+* **Project members and kill switches** — commands for managing personnel and supervisors per project, letting supervisors force-release within their own project, and flipping the per-project and global enforcement switches.
 * **Real enforcement via backend-specific adapters** — replace `MockAdapter` with `LocalFilesystemAdapter`, `DropboxAdapter`, and `GoogleDriveAdapter`, each enforcing a lock through the mechanism that actually works for its backend (OS permissions, or the provider's own sharing API) rather than AnyLock's lock remaining advisory-only.
-* **Project-level organization & kill switches** — introduce `Project` as a real, usable concept (multiple projects, each with its own storage backend, personnel, and supervisors), along with the per-project and global enforcement kill switches described above.
-* **`test_cli.py`** — the CLI currently has zero automated coverage; several real bugs have already surfaced there purely through manual testing.
-* **Stronger authorization** — the current supervisor system is a simple allowlist check (`is_supervisor`); no passwords, sessions, or per-user identity beyond whatever string is passed in. Worth revisiting once there's a real multi-user deployment to support.
-* **Web GUI** — `core.py` was deliberately kept free of any CLI-specific concerns so a web frontend could call into the same locking logic later without touching it.
+* **Central service** — a web API in front of the same locking logic, with the CLI becoming a client of it. This is where storage credentials, a scheduled job that restores permissions when locks expire, and real logins and user IDs will live.
+* **Web GUI** — `locks.py` was deliberately kept free of any CLI-specific concerns so a web frontend can call into the same locking logic without touching it.
