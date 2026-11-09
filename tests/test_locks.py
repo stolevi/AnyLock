@@ -2,11 +2,14 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from pipeline_lock.adapters.mock import MockAdapter
 from pipeline_lock.locks import (
     LockConflictError,
     LockNotOwnedError,
+    ResourceNotFoundError,
     ResourceNotLockedError,
     acquire_lock,
+    acquire_with_registration,
     check_status,
     force_release_lock,
     get_resource_history,
@@ -15,7 +18,11 @@ from pipeline_lock.locks import (
     release_lock,
 )
 from pipeline_lock.models import ResourceRef, StorageType
-from pipeline_lock.projects import create_project, register_resource
+from pipeline_lock.projects import (
+    create_project,
+    is_resource_registered,
+    register_resource,
+)
 
 
 def _register(conn, project_id: int, resource_path: str) -> ResourceRef:
@@ -252,3 +259,40 @@ def test_history_is_kept_per_project(conn, ref):
     assert [event.owner for event in other_history] == ["Sarah"]
     assert history[0].project_id == ref.project_id
     assert other_history[0].project_id == other.project_id
+
+
+# --- acquire_with_registration ---
+
+def test_acquire_with_registration_known_resource_skips_adapter(conn, ref):
+    adapter = MockAdapter(set()) # knows nothing: if it were asked, the lock would fail.
+    lock = acquire_with_registration(conn, adapter, ref, "Levi")
+    assert lock.resource_path == ref.resource_path
+
+def test_acquire_with_registration_adds_resource_the_adapter_knows(conn, project):
+    new = ResourceRef(project.project_id, "shots/SQ01_SH010")
+    adapter = MockAdapter({"shots/SQ01_SH010"})
+    acquire_with_registration(conn, adapter, new, "Levi")
+    assert is_resource_registered(conn, new) is True
+    assert check_status(conn, new).owner == "Levi"
+
+def test_acquire_with_registration_unknown_resource_raises(conn, project):
+    unknown = ResourceRef(project.project_id, "shots/SQ05_SH050")
+    adapter = MockAdapter(set())
+    with pytest.raises(ResourceNotFoundError):
+        acquire_with_registration(conn, adapter, unknown, "Levi")
+    assert is_resource_registered(conn, unknown) is False # nothing half-done left behind
+    assert check_status(conn, unknown) is None
+
+def test_acquire_with_registration_suggests_close_match(conn, ref):
+    adapter = MockAdapter(set())
+    typo = ResourceRef(ref.project_id, "sh0ts/SQ01_SH010") # one letter off from the real "shots/SQ01_SH010"
+    with pytest.raises(ResourceNotFoundError) as exc_info:
+        acquire_with_registration(conn, adapter, typo, "Levi")
+    assert ref.resource_path in exc_info.value.suggestions
+
+def test_acquire_with_registration_passes_duration(conn, ref):
+    adapter = MockAdapter(set())  # ref is already registered, so the adapter isn't asked
+    now = datetime.now(UTC)
+    lock = acquire_with_registration(conn, adapter, ref, "Levi", duration=timedelta(hours=2))
+    # Not the default 8 hours: a small window around 2 hours from now.
+    assert now + timedelta(hours=1, minutes=59) < lock.expires_at < now + timedelta(hours=2, minutes=1)

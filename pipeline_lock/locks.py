@@ -1,7 +1,14 @@
 import sqlite3
 from datetime import UTC, datetime, timedelta
+from difflib import get_close_matches
 
+from pipeline_lock.adapters.base import PipelineAdapter
 from pipeline_lock.models import Lock, LockEvent, ResourceRef
+from pipeline_lock.projects import (
+    is_resource_registered,
+    list_resources_in_project,
+    register_resource,
+)
 
 DEFAULT_LOCK_DURATION = timedelta(hours=8)  # Default lock duration of 8 hours
 
@@ -16,6 +23,14 @@ class LockNotOwnedError(Exception):
 class ResourceNotLockedError(Exception):
     """Raised when an operation requires a lock, but the resource 
     is not locked."""
+
+class ResourceNotFoundError(Exception):
+    """Raised when a resource doesn't exist. Carries close matches."""
+
+    def __init__(self, resource_path: str, suggestions: list[str]):
+        super().__init__(f"No resource with path '{resource_path}'.")
+        self.resource_path = resource_path
+        self.suggestions = suggestions
 
 def _row_to_lock(row: sqlite3.Row) -> Lock:
     """Convert a raw database row into a Lock object."""
@@ -114,7 +129,20 @@ def acquire_lock(conn: sqlite3.Connection, ref: ResourceRef, owner: str, duratio
             _write_to_history(conn, ref, old_lock.owner, "expired", timestamp=old_lock.expires_at)
         _write_to_history(conn, ref, owner, "acquire", lock.acquired_at)
         return lock
-   
+
+def acquire_with_registration(conn: sqlite3.Connection, adapter: PipelineAdapter, ref: ResourceRef, owner: str, duration: timedelta | None = None) -> Lock:
+    """Acquire a lock on a resource, registering it in its project first
+    if it isn't registered yet and the adapter confirms the file exists.
+    Raises ResourceNotFoundError, carrying close-match suggestions, if the
+    file doesn't exist, and LockConflictError if someone else holds the lock."""
+    if not is_resource_registered(conn, ref):
+        if not adapter.resource_exists(ref.resource_path):
+            known = list_resources_in_project(conn, ref.project_id)
+            suggestions = get_close_matches(ref.resource_path, known, n=3)
+            raise ResourceNotFoundError(ref.resource_path, suggestions)
+        register_resource(conn, ref)
+    return acquire_lock(conn, ref, owner, duration)
+
 def refresh_lock(conn: sqlite3.Connection, ref: ResourceRef, owner: str, duration: timedelta | None = None) -> Lock:
     """Extend the lease of an existing lock by 'owner'. Raises 
     ResourceNotLockedError if the resource is not currently locked or 
