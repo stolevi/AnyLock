@@ -1,11 +1,21 @@
+import os
 import sqlite3
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent.parent / "pipeline_lock.db"
+DEFAULT_DB_PATH = Path(__file__).parent.parent / "pipeline_lock.db"
+
+def _resolve_db_path(db_path: str | Path | None) -> str | Path:
+    """Pick the database: an explicit path wins, then the ANYLOCK_DB
+    environment variable, then the default file next to the package.
+    Runs on every call, so tests can point it at a temporary file."""
+    if db_path is not None:
+        return db_path
+    return os.environ.get("ANYLOCK_DB") or DEFAULT_DB_PATH
 
 @contextmanager
-def open_and_close_connection(db_path: str | Path = DB_PATH):
+def open_and_close_connection(db_path: str | Path | None = None) -> Generator[sqlite3.Connection, None, None]:
     """Context manager to open and close a database connection."""
     conn = get_connection(db_path)
     try:
@@ -13,9 +23,9 @@ def open_and_close_connection(db_path: str | Path = DB_PATH):
     finally:
         conn.close()
 
-def get_connection(db_path: str | Path = DB_PATH) -> sqlite3.Connection:
+def get_connection(db_path: str | Path | None = None) -> sqlite3.Connection:
     """Get a connection to the SQLite database."""
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(_resolve_db_path(db_path))
     conn.execute("PRAGMA foreign_keys = ON")  # Enable foreign key support
     conn.row_factory = sqlite3.Row  # Access columns by name instead of index.
     init_db(conn)
