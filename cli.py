@@ -19,12 +19,14 @@ from pipeline_lock.locks import (
     refresh_lock,
     release_lock,
 )
+from pipeline_lock.models import StorageType
 from pipeline_lock.permissions import (
     NotAuthorizedError,
     add_admin_with_bootstrap,
     remove_admin_with_lock,
     require_admin,
 )
+from pipeline_lock.projects import ProjectExistsError, create_project
 
 ANIMATION_ACQUIRE = ["[ ]  ", "[ - ]", "[==] "]
 ANIMATION_REFRESH = ["[--]", "[**]", "[==]"]
@@ -143,6 +145,24 @@ def release(resource_path:str, owner: str) -> None:
             click.secho(f"Lock on {resource_path} released.", fg="green")
         except LockNotOwnedError as e:
             click.secho(str(e), fg="red")
+
+@cli.command(name="create-project")
+@click.argument("project_name")
+@click.option("--storage", required=True, type=click.Choice([t.value for t in StorageType]))
+@click.option("--root", required=True)
+@click.option("--created-by", required=True)
+def create_project_command(project_name: str, storage: str, root: str, created_by: str) -> None:
+    """Create a new project. Only admins can do this."""
+    with open_and_close_connection() as conn:
+        try:
+            project = create_project(conn, project_name, StorageType(storage), root, created_by)
+        except NotAuthorizedError as e:
+            click.secho(str(e), fg="red")
+            return
+        except ProjectExistsError as e:
+            click.secho(str(e), fg="red")
+            return
+        click.secho(f"Project '{project.project_name}' created (id {project.project_id}).", fg="green")
 
 @cli.command(name="add-admin")
 @click.argument("admin_name")
