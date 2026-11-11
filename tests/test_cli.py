@@ -176,3 +176,8 @@ def test_create_duplicate_project_fails(klonter):
 def test_add_admin_by_a_non_admin_fails(klonter):
     result = klonter("add-admin", "Sarah", "--initiated-by", "Sarah")
     assert result.exit_code == 1
+
+def test_remove_last_admin_fails(klonter):
+    result = klonter("remove-admin", "Levi", "--initiated-by", "Levi")
+    assert result.exit_code == 1
+    assert "last admin" in result.output

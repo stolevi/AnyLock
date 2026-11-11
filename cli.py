@@ -2,9 +2,9 @@ import sqlite3
 import time
 from datetime import timedelta
 from typing import NoReturn
- 
+
 import click
- 
+
 from pipeline_lock.adapters.mock import MockAdapter
 from pipeline_lock.db import (
     open_and_close_connection,
@@ -23,6 +23,7 @@ from pipeline_lock.locks import (
 )
 from pipeline_lock.models import Project, ResourceRef, StorageType
 from pipeline_lock.permissions import (
+    LastAdminError,
     NotAuthorizedError,
     add_admin_with_bootstrap,
     remove_admin_with_lock,
@@ -34,7 +35,7 @@ from pipeline_lock.projects import (
     create_project,
     get_project_by_name,
 )
- 
+
 ANIMATION_ACQUIRE = ["[ ]  ", "[ - ]", "[==] "]
 ANIMATION_REFRESH = ["[--]", "[**]", "[==]"]
 ANIMATION_RELEASE = ["[==] ", "[ * ]", "[*]  ", "[ ]  "]
@@ -203,7 +204,7 @@ def remove_admin(admin_name: str, initiated_by: str) -> None:
     with open_and_close_connection() as conn:
         try:
             remove_admin_with_lock(conn, admin_name, initiated_by)
-        except NotAuthorizedError as e:
+        except (NotAuthorizedError, LastAdminError) as e:
             _fail(str(e))
         click.secho(f"Admin {admin_name} removed.", fg="green")
  
