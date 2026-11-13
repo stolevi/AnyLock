@@ -1,8 +1,11 @@
 import pytest
 from click.testing import CliRunner
- 
+
 from cli import cli
- 
+from pipeline_lock.db import open_and_close_connection
+from pipeline_lock.locks import force_release_lock
+from pipeline_lock.permissions import remove_admin_with_lock
+
 # --- Fixtures ---
  
  
@@ -143,6 +146,23 @@ def test_force_release_by_a_non_admin_fails_and_keeps_the_lock(klonter):
  
     result = klonter("status", "SQ04_SH050", "--project", "Klonter")
     assert "locked by Levi" in result.output
+
+def test_force_release_by_admin_removed_mid_command_fails(klonter, monkeypatch):
+    klonter("add-admin", "Sarah", "--initiated-by", "Levi")
+    klonter("acquire", "SQ04_SH050", "--project", "Klonter", "--owner", "Camiel")
+
+    def remove_levi_first(*args, **kwargs):
+        # Levi's admin check already passed; Sarah removes him before the release runs.
+        with open_and_close_connection() as conn:
+            remove_admin_with_lock(conn, "Levi", "Sarah")
+        return force_release_lock(*args, **kwargs)
+
+    monkeypatch.setattr("cli.force_release_lock", remove_levi_first)
+    result = klonter("force-release", "SQ04_SH050", "--project", "Klonter", "--forced-by", "Levi")
+    assert result.exit_code == 1
+
+    result = klonter("status", "SQ04_SH050", "--project", "Klonter")
+    assert "locked by Camiel" in result.output    
  
  
 # --- Show-locks ---

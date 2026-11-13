@@ -27,7 +27,6 @@ from pipeline_lock.permissions import (
     NotAuthorizedError,
     add_admin_with_bootstrap,
     remove_admin_with_lock,
-    require_admin,
 )
 from pipeline_lock.projects import (
     ProjectExistsError,
@@ -216,12 +215,11 @@ def force_release(resource_path: str, project: str, forced_by: str) -> None:
     """Forcefully release a lock on a resource.
     Only admins can do this."""
     with open_and_close_connection() as conn:
+        ref = _ref_or_fail(conn, project, resource_path)
         try:
-            require_admin(conn, forced_by)
+            released_lock = force_release_lock(conn, ref, forced_by)
         except NotAuthorizedError as e:
             _fail(str(e))
-        ref = _ref_or_fail(conn, project, resource_path)
-        released_lock = force_release_lock(conn, ref)
         if released_lock is None:
             click.secho(f"No lock to force release on {resource_path}.", fg="blue")
         else:

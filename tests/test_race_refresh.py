@@ -30,7 +30,7 @@ def test_refresh_cannot_resurrect_a_force_released_lock(tmp_path, monkeypatch):
         # Levi's check already ran; the admin force-releases before his write.
         monkeypatch.setattr(locks, "_write_lock", original_write)
         try:
-            if locks.force_release_lock(admin, ref) is not None:
+            if locks.force_release_lock(admin, ref, "Admin") is not None:
                 force_released.append(True)
         except sqlite3.OperationalError:
             pass  # the admin had to wait: Levi's refresh holds the write lock

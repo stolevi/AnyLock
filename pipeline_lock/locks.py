@@ -4,6 +4,7 @@ from difflib import get_close_matches
 
 from pipeline_lock.adapters.base import PipelineAdapter
 from pipeline_lock.models import Lock, LockEvent, ResourceRef
+from pipeline_lock.permissions import require_admin
 from pipeline_lock.projects import (
     is_resource_registered,
     list_resources_in_project,
@@ -182,10 +183,13 @@ def release_lock(conn: sqlite3.Connection, ref: ResourceRef, owner: str) -> None
             raise LockNotOwnedError(f"{ref.resource_path} is no longer owned by {owner}.")
         _write_to_history(conn, ref, owner, "release", timestamp)
 
-def force_release_lock(conn: sqlite3.Connection, ref: ResourceRef) -> Lock | None:
-    """Forcefully release a lock. Use with caution!"""
-    with conn:    
+def force_release_lock(conn: sqlite3.Connection, ref: ResourceRef, forced_by: str) -> Lock | None:
+    """Forcefully release a lock. Only admins can do this.
+    The admin check runs inside the transaction, so an admin removed a moment
+    earlier can't still force-release."""
+    with conn:
         conn.execute("BEGIN IMMEDIATE")  # Start a transaction to prevent race conditions
+        require_admin(conn, forced_by)
         cursor = conn.execute(
             "DELETE FROM locks WHERE project_id = ? AND resource_path = ? RETURNING *",
             (ref.project_id, ref.resource_path),
@@ -193,8 +197,8 @@ def force_release_lock(conn: sqlite3.Connection, ref: ResourceRef) -> Lock | Non
         old_lock = cursor.fetchone()  # Fetch the deleted row to ensure the operation succeeded
         if old_lock is None:
             return None  # No lock was present to release
-        existing = _row_to_lock(old_lock)  
-        timestamp = datetime.now(UTC)    
+        existing = _row_to_lock(old_lock)
+        timestamp = datetime.now(UTC)
         _write_to_history(conn, ref, existing.owner, "force_release", timestamp)
         return existing
 

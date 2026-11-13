@@ -18,6 +18,7 @@ from pipeline_lock.locks import (
     release_lock,
 )
 from pipeline_lock.models import ResourceRef, StorageType
+from pipeline_lock.permissions import NotAuthorizedError
 from pipeline_lock.projects import (
     create_project,
     is_resource_registered,
@@ -134,18 +135,18 @@ def test_release_lock_noop(conn, ref):
 
 def test_force_release_lock(conn, ref):
     lock = acquire_lock(conn, ref, "owner")
-    released_lock = force_release_lock(conn, ref)
+    released_lock = force_release_lock(conn, ref, "Levi")
     assert check_status(conn, ref) is None
     assert released_lock == lock
 
 def test_force_release_lock_noop(conn, ref):
-    released_lock = force_release_lock(conn, ref)
+    released_lock = force_release_lock(conn, ref, "Levi")
     assert check_status(conn, ref) is None
     assert released_lock is None
 
 def test_force_release_lock_records_history_event(conn, ref):
     acquire_lock(conn, ref, "Levi", duration=timedelta(hours=1))
-    force_release_lock(conn, ref)
+    force_release_lock(conn, ref, "Levi")
     resource_history = get_resource_history(conn, ref)
     assert len(resource_history) == 2
     type_of_event = []
@@ -153,6 +154,12 @@ def test_force_release_lock_records_history_event(conn, ref):
         type_of_event.append(event.event_type)
     assert type_of_event[0] == "force_release"
     assert resource_history[0].owner == "Levi"
+
+def test_force_release_by_non_admin_is_refused(conn, ref):
+    acquire_lock(conn, ref, "Sarah")
+    with pytest.raises(NotAuthorizedError):
+        force_release_lock(conn, ref, "Sarah")
+    assert check_status(conn, ref).owner == "Sarah"    
 
 
 # --- list_active_locks ---
@@ -243,7 +250,7 @@ def test_force_release_only_affects_its_own_project(conn, ref):
     other = _same_path_in_second_project(conn, ref)
     acquire_lock(conn, ref, "Levi")
     acquire_lock(conn, other, "Sarah")
-    force_release_lock(conn, ref)
+    force_release_lock(conn, ref, "Levi")
     assert check_status(conn, ref) is None
     assert check_status(conn, other).owner == "Sarah"
     other_events = [event.event_type for event in get_resource_history(conn, other)]
