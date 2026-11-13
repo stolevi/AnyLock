@@ -8,6 +8,10 @@ class StorageType(Enum):
     DROPBOX = "dropbox"
     GOOGLE_DRIVE = "google_drive"
 
+class Role(Enum):
+    PERSONNEL = "personnel"
+    SUPERVISOR = "supervisor"
+
 @dataclass
 class Project:
     project_id: int

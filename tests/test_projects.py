@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from pipeline_lock.models import ResourceRef, StorageType
+from pipeline_lock.models import ResourceRef, Role, StorageType
 from pipeline_lock.permissions import NotAuthorizedError, add_admin
 from pipeline_lock.projects import (
     ProjectExistsError,
@@ -162,3 +162,12 @@ def test_list_resources_in_project_only_this_project_sorted(conn, project):
 def test_list_resources_in_project_empty_project(conn, project):
     assert list_resources_in_project(conn, project.project_id) == []
 
+
+# --- role ---
+
+@pytest.mark.parametrize("role", list(Role))
+def test_every_role_fits_the_schema(conn, project, role):
+    conn.execute(
+        "INSERT INTO project_members (project_id, member_name, role) VALUES (?, ?, ?)",
+        (project.project_id, "Tom", role.value),
+    )
